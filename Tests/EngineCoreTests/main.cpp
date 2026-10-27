@@ -1,7 +1,11 @@
 #include "diskmark/config.h"
+#include "diskmark/engine.h"
 #include "diskmark/test_file.h"
 
+#include <atomic>
 #include <cassert>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -11,6 +15,7 @@
 #include <iostream>
 #include <string>
 #include <sys/stat.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -220,6 +225,153 @@ void testTestFileRejectsHugeRequest() {
     std::filesystem::remove_all(target);
 }
 
+diskmark::Job makeJob(
+    const std::string& operation,
+    const std::string& mode,
+    std::uint64_t blockSize,
+    int queueDepth,
+    int threads,
+    int durationSeconds
+) {
+    diskmark::Job job;
+    job.id = "test";
+    job.label = "Test";
+    job.operation = operation;
+    job.mode = mode;
+    job.blockSizeBytes = blockSize;
+    job.queueDepth = queueDepth;
+    job.threads = threads;
+    job.durationSeconds = durationSeconds;
+    return job;
+}
+
+void testComputeResult() {
+    const auto result = diskmark::computeResult(1'000'000, 1.0, 4'096, {100.0, 200.0});
+    assert(std::abs(result.mbps - 1.0) < 1e-9);
+    assert(std::abs(result.iops - 244.140625) < 1e-9);
+    assert(std::abs(result.latencyUs - 150.0) < 1e-9);
+    ++testCount;
+}
+
+void testEffectiveWorkers() {
+    assert(diskmark::effectiveWorkers(8, 1) == 8);
+    assert(diskmark::effectiveWorkers(1, 1) == 1);
+    assert(diskmark::effectiveWorkers(32, 16) == 128);
+    ++testCount;
+}
+
+void testOffsetBounds() {
+    for (std::uint64_t i = 0; i < 10'000; ++i) {
+        const std::uint64_t offset = diskmark::chooseOffset("random", i, 16, 4'096);
+        assert(offset < 16 * 4'096);
+        assert(offset % 4'096 == 0);
+    }
+    assert(diskmark::chooseOffset("sequential", 17, 16, 4'096) == 4'096);
+    ++testCount;
+}
+
+void testSequentialRead() {
+    const std::string target = makeTempDirectory();
+    const auto config = configFor(target, 64ULL * 1024 * 1024, "random");
+    diskmark::TestFile file(config);
+    file.create();
+    file.fill();
+    file.fsyncForReads();
+
+    std::atomic<bool> cancel{false};
+    const auto result = diskmark::runJob(
+        file,
+        makeJob("read", "sequential", 1ULL * 1024 * 1024, 1, 1, 1),
+        cancel
+    );
+
+    assert(result.bytes > 0);
+    assert(result.mbps > 0);
+    assert(result.iops > 0);
+    assert(!result.cancelled);
+
+    file.cleanup();
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
+void testRandomRead() {
+    const std::string target = makeTempDirectory();
+    const auto config = configFor(target, 64ULL * 1024 * 1024, "random");
+    diskmark::TestFile file(config);
+    file.create();
+    file.fill();
+    file.fsyncForReads();
+
+    std::atomic<bool> cancel{false};
+    const auto result = diskmark::runJob(
+        file,
+        makeJob("read", "random", 4'096, 4, 1, 1),
+        cancel
+    );
+
+    assert(result.bytes > 0);
+    assert(result.mbps > 0);
+    assert(!result.cancelled);
+
+    file.cleanup();
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
+void testSequentialWrite() {
+    const std::string target = makeTempDirectory();
+    const auto config = configFor(target, 64ULL * 1024 * 1024, "random");
+    diskmark::TestFile file(config);
+    file.create();
+    file.fill();
+    file.fsyncForReads();
+
+    std::atomic<bool> cancel{false};
+    const auto result = diskmark::runJob(
+        file,
+        makeJob("write", "sequential", 1ULL * 1024 * 1024, 1, 1, 1),
+        cancel
+    );
+
+    assert(result.bytes > 0);
+    assert(result.mbps > 0);
+    assert(!result.cancelled);
+
+    file.cleanup();
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
+void testCancellation() {
+    const std::string target = makeTempDirectory();
+    const auto config = configFor(target, 64ULL * 1024 * 1024, "random");
+    diskmark::TestFile file(config);
+    file.create();
+    file.fill();
+    file.fsyncForReads();
+
+    std::atomic<bool> cancel{false};
+    std::thread stopper([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        cancel = true;
+    });
+
+    const auto result = diskmark::runJob(
+        file,
+        makeJob("read", "sequential", 1ULL * 1024 * 1024, 1, 1, 5),
+        cancel
+    );
+    stopper.join();
+
+    assert(result.cancelled);
+    assert(result.bytes > 0);
+
+    file.cleanup();
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
 void testStaleCleanup() {
     const std::string target = makeTempDirectory();
     const std::string oldDirectory = target + "/CrystalDiskMarkMac-old";
@@ -258,6 +410,13 @@ int main() {
     testTestFileRejectsFileTarget();
     testTestFileRejectsHugeRequest();
     testStaleCleanup();
+    testComputeResult();
+    testEffectiveWorkers();
+    testOffsetBounds();
+    testSequentialRead();
+    testRandomRead();
+    testSequentialWrite();
+    testCancellation();
 
     std::cout << "engine core tests passed: " << testCount << "\n";
     return 0;

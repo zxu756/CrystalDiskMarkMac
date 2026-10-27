@@ -6,9 +6,11 @@
 
 **Architecture:** The SwiftUI app owns the window, menus, settings, volume selection, progress, and result rendering. It launches a bundled C++17 `DiskMarkEngine` with a JSON job list. The engine creates a test file with `F_NOCACHE`, runs warm-up and measured I/O with a capped worker pool, emits newline-delimited JSON events, and cleans up its test directory.
 
-**Tech Stack:** Swift 6.4, SwiftUI, SwiftPM, C++17, POSIX `pread`/`pwrite`, XCTest, `clang++`, macOS 27 arm64, ad-hoc signing.
+**Tech Stack:** Swift 6.4, SwiftUI, SwiftPM, C++17, POSIX `pread`/`pwrite`, Swift Testing, `clang++`, macOS 27 arm64, ad-hoc signing.
 
 **Spec:** `/Users/xu/Projects/CrystalDiskMarkMac/docs/superpowers/specs/2026-10-27-crystaldiskmark-mac-design.md`
+
+> **Toolchain note (2026-10-28):** XCTest is unavailable with Command Line Tools only. All Swift tests in this plan use Swift Testing (`import Testing`, `@Test`, `#expect`); translate the XCTest-style snippets accordingly. `Package.swift` loads the Command Line Tools `libTestingMacros.dylib` plugin when present, so plain `swift test` works.
 
 ## Global Constraints
 

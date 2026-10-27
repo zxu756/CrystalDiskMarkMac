@@ -1,0 +1,19 @@
+CrystalDiskMark Mac
+
+This project is a macOS reimplementation inspired by CrystalDiskMark.
+
+CrystalDiskMark
+Copyright (C) 2007-2026 hiyohiyo
+License: MIT
+https://crystalmark.info/
+
+Microsoft DiskSpd
+Copyright (c) 2014 Microsoft
+License: MIT
+https://github.com/microsoft/diskspd
+
+The original CrystalDiskMark source was used as a behavioral reference. The
+macOS benchmark engine in this project is an independent POSIX implementation;
+no DiskSpd code is copied or linked.
+
+This project is not affiliated with CrystalMark or Microsoft.

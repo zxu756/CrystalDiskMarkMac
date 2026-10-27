@@ -10,7 +10,7 @@ public struct MainView: View {
     public var body: some View {
         VStack(spacing: 4) {
             topBar
-                .frame(height: 32, alignment: .top)
+                .frame(height: 36, alignment: .top)
 
             VStack(spacing: 4) {
                 ForEach(Array(model.settings.tests.enumerated()), id: \.element.id) { index, test in
@@ -72,6 +72,7 @@ public struct MainView: View {
                 Text("Volume")
                     .font(Theme.labelFont)
                     .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
                 Menu {
                     ForEach(model.volumes) { volume in
                         Button(volume.name) {
@@ -151,6 +152,7 @@ public struct MainView: View {
             Text(title)
                 .font(Theme.labelFont)
                 .foregroundStyle(Theme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
             Menu {
                 ForEach(options, id: \.self) { option in
                     Button(label(option)) {

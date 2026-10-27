@@ -75,6 +75,15 @@ struct AppCommands: Commands {
         }
 
         CommandMenu("Benchmark") {
+            Button("Run All") {
+                model.runAll()
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            Button("Stop") {
+                model.stop()
+            }
+            .keyboardShortcut(".", modifiers: .command)
+            Divider()
             Button("Read & Write") {
                 update { $0.benchmarkMode = .readWrite }
             }

@@ -11,8 +11,8 @@ struct BenchmarkJobBuilderTests {
         #expect(config.jobs.count == 32)
         #expect(config.jobs.prefix(16).map(\.operation) == Array(repeating: .read, count: 16))
         #expect(config.jobs.suffix(16).map(\.operation) == Array(repeating: .write, count: 16))
-        #expect(config.jobs.first?.id == "seq-1m-q8t1-read")
-        #expect(config.jobs.last?.id == "rnd-4k-q1t1-write")
+        #expect(config.jobs.first?.id == "seq-1m-q8t1")
+        #expect(config.jobs.last?.id == "rnd-4k-q1t1")
     }
 
     @Test func intervalsOnlyAfterLastMeasuredRun() {
@@ -62,7 +62,7 @@ struct BenchmarkJobBuilderTests {
         #expect(config.target == target.path)
         #expect(config.fileSizeBytes == 1_073_741_824)
         #expect(config.dataPattern == .random)
-        #expect(first.id == "seq-1m-q8t1-read")
+        #expect(first.id == "seq-1m-q8t1")
         #expect(first.label == "SEQ1M Q8T1")
         #expect(first.operation == .read)
         #expect(first.run == 0)

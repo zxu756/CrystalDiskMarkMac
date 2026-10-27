@@ -118,7 +118,7 @@ struct BenchmarkViewModelTests {
 
         #expect(runner.started)
         #expect(runner.configs.last?.jobs.count == 8)
-        #expect(runner.configs.last?.jobs.first?.id == "rnd-4k-q32t1-read")
+        #expect(runner.configs.last?.jobs.first?.id == "rnd-4k-q32t1")
     }
 
     @Test func exitWithoutDoneFails() throws {

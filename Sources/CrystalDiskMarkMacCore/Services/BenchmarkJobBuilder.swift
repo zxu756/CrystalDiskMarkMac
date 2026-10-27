@@ -88,7 +88,7 @@ public enum BenchmarkJobBuilder {
     ) -> [BenchmarkJob] {
         (0...settings.testCount).map { run in
             BenchmarkJob(
-                id: "\(test.id)-\(operation.rawValue)",
+                id: test.id,
                 label: test.label,
                 operation: operation,
                 run: run,

@@ -1,9 +1,17 @@
 #include "diskmark/config.h"
+#include "diskmark/test_file.h"
 
 #include <cassert>
+#include <cstdint>
 #include <cstdlib>
+#include <ctime>
+#include <fcntl.h>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -133,6 +141,112 @@ void testEscapeJson() {
     ++testCount;
 }
 
+std::string makeTempDirectory() {
+    std::string pattern = "/tmp/cdm-engine-test-XXXXXX";
+    std::vector<char> buffer(pattern.begin(), pattern.end());
+    buffer.push_back('\0');
+    char* result = mkdtemp(buffer.data());
+    assert(result != nullptr);
+    return std::string(result);
+}
+
+diskmark::Config configFor(const std::string& target, std::uint64_t size, const std::string& pattern) {
+    diskmark::Config config;
+    config.target = target;
+    config.fileSizeBytes = size;
+    config.dataPattern = pattern;
+    return config;
+}
+
+template <typename F>
+void expectEngineThrows(const std::string& name, F&& fn) {
+    try {
+        fn();
+    } catch (const diskmark::EngineError&) {
+        ++testCount;
+        return;
+    } catch (const std::exception& error) {
+        std::cerr << "FAIL " << name << ": wrong exception: " << error.what() << "\n";
+        std::exit(1);
+    }
+
+    std::cerr << "FAIL " << name << ": expected EngineError\n";
+    std::exit(1);
+}
+
+void testTestFileLifecycle() {
+    const std::string target = makeTempDirectory();
+    const auto config = configFor(target, 64ULL * 1024 * 1024, "random");
+
+    diskmark::TestFile file(config);
+    file.create();
+    file.fill();
+    file.fsyncForReads();
+
+    assert(file.size() == config.fileSizeBytes);
+    assert(std::filesystem::exists(file.path()));
+    assert(std::filesystem::exists(file.directory() + "/.crystaldiskmark-mac-session"));
+
+    const std::string directory = file.directory();
+    file.cleanup();
+    assert(!std::filesystem::exists(directory));
+    file.cleanup();
+
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
+void testTestFileRejectsFileTarget() {
+    const std::string target = makeTempDirectory();
+    const std::string filePath = target + "/not-a-directory";
+    std::ofstream(filePath).put('x');
+
+    const auto config = configFor(filePath, 1ULL * 1024 * 1024, "random");
+    expectEngineThrows("file target", [&] {
+        diskmark::TestFile file(config);
+        file.create();
+    });
+
+    std::filesystem::remove_all(target);
+}
+
+void testTestFileRejectsHugeRequest() {
+    const std::string target = makeTempDirectory();
+    const auto config = configFor(target, UINT64_MAX / 2, "random");
+    expectEngineThrows("insufficient space", [&] {
+        diskmark::TestFile file(config);
+        file.create();
+    });
+    std::filesystem::remove_all(target);
+}
+
+void testStaleCleanup() {
+    const std::string target = makeTempDirectory();
+    const std::string oldDirectory = target + "/CrystalDiskMarkMac-old";
+    const std::string newDirectory = target + "/CrystalDiskMarkMac-new";
+    const std::string unmarkedDirectory = target + "/CrystalDiskMarkMac-unmarked";
+
+    std::filesystem::create_directories(oldDirectory);
+    std::filesystem::create_directories(newDirectory);
+    std::filesystem::create_directories(unmarkedDirectory);
+    std::ofstream(oldDirectory + "/.crystaldiskmark-mac-session") << "old";
+    std::ofstream(newDirectory + "/.crystaldiskmark-mac-session") << "new";
+
+    struct timespec times[2];
+    times[0].tv_sec = std::time(nullptr) - 25 * 3600;
+    times[0].tv_nsec = 0;
+    times[1] = times[0];
+    assert(utimensat(AT_FDCWD, oldDirectory.c_str(), times, 0) == 0);
+
+    diskmark::cleanupStaleSessions(target, 24);
+    assert(!std::filesystem::exists(oldDirectory));
+    assert(std::filesystem::exists(newDirectory));
+    assert(std::filesystem::exists(unmarkedDirectory));
+
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
 }  // namespace
 
 int main() {
@@ -140,6 +254,10 @@ int main() {
     testMultipleJobsPreserveOrder();
     testInvalidConfigs();
     testEscapeJson();
+    testTestFileLifecycle();
+    testTestFileRejectsFileTarget();
+    testTestFileRejectsHugeRequest();
+    testStaleCleanup();
 
     std::cout << "engine core tests passed: " << testCount << "\n";
     return 0;

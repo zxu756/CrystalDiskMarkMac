@@ -114,8 +114,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public var testSizeLabel: String {
-        guard AppSettings.testSizeMiB.indices.contains(testSizeIndex) else { return "0 MiB" }
-        let mib = AppSettings.testSizeMiB[testSizeIndex]
+        AppSettings.testSizeLabel(for: testSizeIndex)
+    }
+
+    public static func testSizeLabel(for index: Int) -> String {
+        guard testSizeMiB.indices.contains(index) else { return "0 MiB" }
+        let mib = testSizeMiB[index]
         if mib >= 1_024 && mib % 1_024 == 0 {
             return "\(mib / 1_024) GiB"
         }

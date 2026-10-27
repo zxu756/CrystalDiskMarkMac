@@ -13,7 +13,7 @@ public enum BenchmarkState: Equatable, Sendable {
 
 @MainActor
 public final class BenchmarkViewModel: ObservableObject {
-    @Published public private(set) var settings: AppSettings
+    @Published public var settings: AppSettings
     @Published public private(set) var results: [String: BenchmarkResult] = [:]
     @Published public private(set) var state: BenchmarkState = .idle
     @Published public private(set) var statusText = ""
@@ -52,6 +52,15 @@ public final class BenchmarkViewModel: ObservableObject {
     deinit {
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
+        }
+    }
+
+    public var isRunning: Bool {
+        switch state {
+        case .preparing, .running, .interval:
+            return true
+        case .idle, .finished, .failed:
+            return false
         }
     }
 

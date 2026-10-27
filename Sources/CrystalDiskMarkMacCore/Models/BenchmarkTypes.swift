@@ -1,16 +1,16 @@
 import Foundation
 
-public enum BenchmarkType: String, Codable, CaseIterable, Sendable {
+public enum BenchmarkType: String, Codable, CaseIterable, Hashable, Sendable {
     case sequential
     case random
 }
 
-public enum BenchmarkOperation: String, Codable, CaseIterable, Sendable {
+public enum BenchmarkOperation: String, Codable, CaseIterable, Hashable, Sendable {
     case read
     case write
 }
 
-public enum BenchmarkUnit: Int, Codable, CaseIterable, Sendable {
+public enum BenchmarkUnit: Int, Codable, CaseIterable, Hashable, Sendable {
     case mbps = 0
     case gbps = 1
     case iops = 2
@@ -26,18 +26,18 @@ public enum BenchmarkUnit: Int, Codable, CaseIterable, Sendable {
     }
 }
 
-public enum DataPattern: String, Codable, CaseIterable, Sendable {
+public enum DataPattern: String, Codable, CaseIterable, Hashable, Sendable {
     case random
     case zero
 }
 
-public enum BenchmarkMode: String, Codable, CaseIterable, Sendable {
+public enum BenchmarkMode: String, Codable, CaseIterable, Hashable, Sendable {
     case readWrite
     case readOnly
     case writeOnly
 }
 
-public enum BenchmarkProfile: String, Codable, CaseIterable, Sendable {
+public enum BenchmarkProfile: String, Codable, CaseIterable, Hashable, Sendable {
     case defaultProfile = "default"
     case peak
     case realWorld

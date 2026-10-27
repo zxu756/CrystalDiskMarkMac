@@ -1,7 +1,9 @@
 #include "diskmark/config.h"
 #include "diskmark/engine.h"
+#include "diskmark/events.h"
 #include "diskmark/test_file.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <chrono>
@@ -13,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <sys/stat.h>
 #include <thread>
@@ -372,6 +375,122 @@ void testCancellation() {
     ++testCount;
 }
 
+bool containsEvent(const std::vector<std::string>& events, const std::string& name) {
+    return std::any_of(events.begin(), events.end(), [&](const std::string& event) {
+        return event.find("\"event\":\"" + name + "\"") != std::string::npos;
+    });
+}
+
+std::string findEvent(const std::vector<std::string>& events, const std::string& name) {
+    const auto it = std::find_if(events.begin(), events.end(), [&](const std::string& event) {
+        return event.find("\"event\":\"" + name + "\"") != std::string::npos;
+    });
+    assert(it != events.end());
+    return *it;
+}
+
+void assertNoSessionDirectories(const std::string& target) {
+    for (const auto& entry : std::filesystem::directory_iterator(target)) {
+        const std::string name = entry.path().filename().string();
+        assert(name.rfind("CrystalDiskMarkMac-", 0) != 0);
+    }
+}
+
+void testRunSession() {
+    const std::string target = makeTempDirectory();
+    auto config = configFor(target, 16ULL * 1024 * 1024, "random");
+    auto job = makeJob("read", "sequential", 1ULL * 1024 * 1024, 1, 1, 1);
+    job.warmup = true;
+    config.jobs.push_back(job);
+
+    std::mutex mutex;
+    std::vector<std::string> events;
+    const auto sink = [&](const std::string& line) {
+        std::lock_guard<std::mutex> lock(mutex);
+        events.push_back(line);
+    };
+
+    const int code = diskmark::runSession(config, sink);
+    assert(code == 0);
+    assert(containsEvent(events, "phase"));
+    assert(containsEvent(events, "run"));
+    assert(containsEvent(events, "progress"));
+    assert(containsEvent(events, "result"));
+    assert(containsEvent(events, "done"));
+
+    const std::string result = findEvent(events, "result");
+    assert(result.find("\"test\":\"test\"") != std::string::npos);
+    assert(result.find("\"operation\":\"read\"") != std::string::npos);
+    assert(result.find("\"run\":0") != std::string::npos);
+    assert(result.find("\"warmup\":true") != std::string::npos);
+    assert(result.find("\"mbps\":") != std::string::npos);
+    assert(result.find("\"iops\":") != std::string::npos);
+    assert(result.find("\"latencyUs\":") != std::string::npos);
+
+    assertNoSessionDirectories(target);
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
+void testIntervalEvents() {
+    const std::string target = makeTempDirectory();
+    auto config = configFor(target, 16ULL * 1024 * 1024, "random");
+    auto job = makeJob("read", "sequential", 1ULL * 1024 * 1024, 1, 1, 1);
+    job.intervalAfterMs = 1'000;
+    config.jobs.push_back(job);
+
+    std::mutex mutex;
+    std::vector<std::string> events;
+    const auto sink = [&](const std::string& line) {
+        std::lock_guard<std::mutex> lock(mutex);
+        events.push_back(line);
+    };
+
+    const int code = diskmark::runSession(config, sink);
+    assert(code == 0);
+    assert(containsEvent(events, "interval"));
+    assert(containsEvent(events, "done"));
+    assertNoSessionDirectories(target);
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
+void testCancelledSession() {
+    const std::string target = makeTempDirectory();
+    auto config = configFor(target, 16ULL * 1024 * 1024, "random");
+    config.jobs.push_back(makeJob("read", "sequential", 1ULL * 1024 * 1024, 1, 1, 5));
+
+    std::mutex mutex;
+    std::vector<std::string> events;
+    const auto sink = [&](const std::string& line) {
+        std::lock_guard<std::mutex> lock(mutex);
+        events.push_back(line);
+    };
+
+    std::atomic<bool> cancel{false};
+    std::thread stopper([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        cancel = true;
+    });
+
+    const int code = diskmark::runSession(config, sink, cancel);
+    stopper.join();
+
+    assert(code == 130);
+    assert(containsEvent(events, "error"));
+    assert(findEvent(events, "error").find("\"code\":\"cancelled\"") != std::string::npos);
+    assertNoSessionDirectories(target);
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
+void testEventHelpers() {
+    assert(diskmark::errorEvent("bad", "oops").find("\"event\":\"error\"") != std::string::npos);
+    assert(diskmark::doneEvent(true).find("\"ok\":true") != std::string::npos);
+    assert(diskmark::intervalEvent(3).find("\"secondsRemaining\":3") != std::string::npos);
+    ++testCount;
+}
+
 void testStaleCleanup() {
     const std::string target = makeTempDirectory();
     const std::string oldDirectory = target + "/CrystalDiskMarkMac-old";
@@ -417,6 +536,10 @@ int main() {
     testRandomRead();
     testSequentialWrite();
     testCancellation();
+    testRunSession();
+    testIntervalEvents();
+    testCancelledSession();
+    testEventHelpers();
 
     std::cout << "engine core tests passed: " << testCount << "\n";
     return 0;

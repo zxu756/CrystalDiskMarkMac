@@ -1,8 +1,10 @@
 #include "diskmark/engine.h"
+#include "diskmark/events.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstdlib>
 #include <random>
 #include <thread>
@@ -66,7 +68,12 @@ std::uint64_t chooseOffset(
     return (blockIndex % totalBlocks) * blockSizeBytes;
 }
 
-JobResult runJob(TestFile& file, const Job& job, std::atomic<bool>& cancel) {
+JobResult runJob(
+    TestFile& file,
+    const Job& job,
+    std::atomic<bool>& cancel,
+    std::atomic<std::uint64_t>* progressBytes
+) {
     if (file.fd() < 0) {
         fail("not_created", "test file is not open");
     }
@@ -176,6 +183,12 @@ JobResult runJob(TestFile& file, const Job& job, std::atomic<bool>& cancel) {
                     static_cast<std::uint64_t>(transferred),
                     std::memory_order_relaxed
                 );
+                if (progressBytes != nullptr) {
+                    progressBytes->fetch_add(
+                        static_cast<std::uint64_t>(transferred),
+                        std::memory_order_relaxed
+                    );
+                }
                 localLatencySum += std::chrono::duration<double, std::micro>(
                     operationEnd - operationStart
                 ).count();
@@ -233,6 +246,134 @@ JobResult runJob(TestFile& file, const Job& job, std::atomic<bool>& cancel) {
     }
 
     return result;
+}
+
+namespace {
+
+std::atomic<bool>* gCancelFlag = nullptr;
+
+extern "C" void handleSignal(int) {
+    if (gCancelFlag != nullptr) {
+        gCancelFlag->store(true, std::memory_order_relaxed);
+    }
+}
+
+int runSessionImpl(const Config& config, const EventSink& emit, std::atomic<bool>& cancel) {
+    gCancelFlag = &cancel;
+    std::signal(SIGINT, handleSignal);
+    std::signal(SIGTERM, handleSignal);
+
+    TestFile file(config);
+    try {
+        cleanupStaleSessions(config.target);
+
+        emit(phaseEvent("create", "Creating test file"));
+        file.create();
+
+        emit(phaseEvent("fill", "Filling test file"));
+        file.fill();
+
+        const bool hasReadJob = std::any_of(
+            config.jobs.begin(),
+            config.jobs.end(),
+            [](const Job& job) { return job.operation == "read"; }
+        );
+        if (hasReadJob) {
+            file.fsyncForReads();
+        }
+
+        for (const Job& job : config.jobs) {
+            if (cancel.load(std::memory_order_relaxed)) {
+                emit(errorEvent("cancelled", "Cancelled"));
+                file.cleanup();
+                gCancelFlag = nullptr;
+                return 130;
+            }
+
+            emit(runEvent(job));
+
+            std::atomic<bool> jobDone{false};
+            std::atomic<std::uint64_t> jobBytes{0};
+            std::thread reporter([&] {
+                const auto begin = std::chrono::steady_clock::now();
+                while (!jobDone.load(std::memory_order_acquire)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                    if (jobDone.load(std::memory_order_acquire)) {
+                        break;
+                    }
+                    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - begin
+                    ).count();
+                    emit(progressEvent(
+                        job,
+                        static_cast<std::uint64_t>(elapsed),
+                        jobBytes.load(std::memory_order_relaxed)
+                    ));
+                }
+            });
+
+            JobResult result;
+            try {
+                result = runJob(file, job, cancel, &jobBytes);
+            } catch (...) {
+                jobDone.store(true, std::memory_order_release);
+                reporter.join();
+                throw;
+            }
+            jobDone.store(true, std::memory_order_release);
+            reporter.join();
+
+            emit(resultEvent(result));
+
+            if (result.cancelled || cancel.load(std::memory_order_relaxed)) {
+                emit(errorEvent("cancelled", "Cancelled"));
+                file.cleanup();
+                gCancelFlag = nullptr;
+                return 130;
+            }
+
+            if (job.intervalAfterMs > 0) {
+                const int seconds = (job.intervalAfterMs + 999) / 1'000;
+                for (int remaining = seconds; remaining > 0; --remaining) {
+                    if (cancel.load(std::memory_order_relaxed)) {
+                        emit(errorEvent("cancelled", "Cancelled"));
+                        file.cleanup();
+                        gCancelFlag = nullptr;
+                        return 130;
+                    }
+                    emit(intervalEvent(remaining));
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+            }
+        }
+
+        emit(phaseEvent("cleanup", "Removing test file"));
+        file.cleanup();
+        emit(doneEvent(true));
+        gCancelFlag = nullptr;
+        return 0;
+    } catch (const EngineError& error) {
+        file.cleanup();
+        emit(errorEvent(error.code, error.what()));
+        gCancelFlag = nullptr;
+        return 3;
+    } catch (const std::exception& error) {
+        file.cleanup();
+        emit(errorEvent("engine_failure", error.what()));
+        gCancelFlag = nullptr;
+        return 3;
+    }
+}
+
+}  // namespace
+
+int runSession(const Config& config, EventSink emit) {
+    std::atomic<bool> cancel{false};
+    return runSessionImpl(config, emit, cancel);
+}
+
+int runSession(const Config& config, EventSink emit, std::atomic<bool>& cancel) {
+    return runSessionImpl(config, emit, cancel);
 }
 
 }  // namespace diskmark

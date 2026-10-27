@@ -44,6 +44,14 @@ std::uint64_t chooseOffset(
     std::uint64_t blockSizeBytes
 );
 
-JobResult runJob(TestFile& file, const Job& job, std::atomic<bool>& cancel);
+JobResult runJob(
+    TestFile& file,
+    const Job& job,
+    std::atomic<bool>& cancel,
+    std::atomic<std::uint64_t>* progressBytes = nullptr
+);
+
+int runSession(const Config& config, EventSink emit);
+int runSession(const Config& config, EventSink emit, std::atomic<bool>& cancel);
 
 }  // namespace diskmark

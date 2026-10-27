@@ -1,4 +1,6 @@
 #include "diskmark/config.h"
+#include "diskmark/engine.h"
+#include "diskmark/events.h"
 
 #include <fstream>
 #include <iostream>
@@ -35,7 +37,7 @@ int main(int argc, char** argv) {
 
     std::ifstream input(configPath);
     if (!input) {
-        std::cerr << "cannot open config: " << configPath << "\n";
+        std::cout << diskmark::errorEvent("config_unreadable", "cannot open config: " + configPath) << "\n";
         return 2;
     }
 
@@ -44,13 +46,16 @@ int main(int argc, char** argv) {
 
     try {
         const diskmark::Config config = diskmark::parseConfig(buffer.str());
-        std::cout << "target=" << config.target
-                  << " jobs=" << config.jobs.size()
-                  << " fileSizeBytes=" << config.fileSizeBytes
-                  << "\n";
-        return 0;
+        const auto emit = [](const std::string& line) {
+            std::cout << line << "\n";
+            std::cout.flush();
+        };
+        return diskmark::runSession(config, emit);
     } catch (const diskmark::ConfigError& error) {
-        std::cerr << error.code << ": " << error.what() << "\n";
+        std::cout << diskmark::errorEvent(error.code, error.what()) << "\n";
         return 2;
+    } catch (const std::exception& error) {
+        std::cout << diskmark::errorEvent("engine_failure", error.what()) << "\n";
+        return 3;
     }
 }

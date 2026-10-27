@@ -149,6 +149,28 @@ struct EngineRunnerTests {
         }
     }
 
+    @Test func startWhileRunningThrows() throws {
+        let script = try makeScript("sleep 5")
+        let runner = EngineRunner(engineURL: script, callbackQueue: DispatchQueue(label: "cdm-test-single-flight"))
+        try runner.start(config: config(), onEvent: { _ in }, onExit: { _, _ in })
+
+        #expect(throws: EngineRunnerError.self) {
+            try runner.start(config: config(), onEvent: { _ in }, onExit: { _, _ in })
+        }
+
+        runner.cancelAndWait(timeout: 3)
+    }
+
+    @Test func cancelAndWaitAllowsRestart() throws {
+        let script = try makeScript("sleep 2")
+        let runner = EngineRunner(engineURL: script, callbackQueue: DispatchQueue(label: "cdm-test-restart"))
+        try runner.start(config: config(), onEvent: { _ in }, onExit: { _, _ in })
+        runner.cancelAndWait(timeout: 3)
+
+        try runner.start(config: config(), onEvent: { _ in }, onExit: { _, _ in })
+        runner.cancelAndWait(timeout: 3)
+    }
+
     @Test func cancelStopsSleepingEngine() throws {
         let script = try makeScript("sleep 10")
         let collector = EventCollector()

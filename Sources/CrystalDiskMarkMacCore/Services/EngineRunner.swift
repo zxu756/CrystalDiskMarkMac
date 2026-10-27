@@ -4,6 +4,7 @@ import Darwin
 public enum EngineRunnerError: LocalizedError, Equatable {
     case engineMissing(URL)
     case configWriteFailed(String)
+    case alreadyRunning
 
     public var errorDescription: String? {
         switch self {
@@ -11,6 +12,8 @@ public enum EngineRunnerError: LocalizedError, Equatable {
             return "DiskMarkEngine not found or not executable: \(url.path)"
         case .configWriteFailed(let message):
             return "Could not write engine config: \(message)"
+        case .alreadyRunning:
+            return "A benchmark is already running."
         }
     }
 }
@@ -45,6 +48,7 @@ public final class EngineRunner: EngineRunning {
     private var onEvent: ((EngineEvent) -> Void)?
     private var onExit: ((Int32, String) -> Void)?
     private var finished = false
+    private var generation: UInt64 = 0
 
     public init(engineURL: URL, callbackQueue: DispatchQueue = .main) {
         self.engineURL = engineURL
@@ -66,6 +70,10 @@ public final class EngineRunner: EngineRunning {
         onEvent: @escaping (EngineEvent) -> Void,
         onExit: @escaping (Int32, String) -> Void
     ) throws {
+        guard process?.isRunning != true else {
+            throw EngineRunnerError.alreadyRunning
+        }
+
         guard FileManager.default.isExecutableFile(atPath: engineURL.path) else {
             throw EngineRunnerError.engineMissing(engineURL)
         }
@@ -85,6 +93,8 @@ public final class EngineRunner: EngineRunning {
         self.lineBuffer = LineBuffer()
         self.stderrTail = Data()
         self.finished = false
+        generation &+= 1
+        let runGeneration = generation
 
         let process = Process()
         process.executableURL = engineURL
@@ -103,15 +113,23 @@ public final class EngineRunner: EngineRunning {
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
-            self?.workQueue.async { self?.consumeStdout(data) }
+            self?.workQueue.async {
+                guard let self, self.generation == runGeneration else { return }
+                self.consumeStdout(data)
+            }
         }
         stderrPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
-            self?.workQueue.async { self?.consumeStderr(data) }
+            self?.workQueue.async {
+                guard let self, self.generation == runGeneration else { return }
+                self.consumeStderr(data)
+            }
         }
         process.terminationHandler = { [weak self] process in
-            self?.workQueue.async { self?.finish(exitCode: process.terminationStatus) }
+            self?.workQueue.async {
+                self?.finish(exitCode: process.terminationStatus, generation: runGeneration)
+            }
         }
 
         do {
@@ -154,6 +172,19 @@ public final class EngineRunner: EngineRunning {
         if exited.wait(timeout: .now() + timeout) == .timedOut, process.isRunning {
             kill(process.processIdentifier, SIGKILL)
         }
+
+        workQueue.sync {
+            self.generation &+= 1
+            self.finished = true
+            self.stdoutPipe?.fileHandleForReading.readabilityHandler = nil
+            self.stderrPipe?.fileHandleForReading.readabilityHandler = nil
+            self.process = nil
+            self.stdoutPipe = nil
+            self.stderrPipe = nil
+            self.onEvent = nil
+            self.onExit = nil
+            self.cleanup()
+        }
     }
 
     private func consumeStdout(_ data: Data) {
@@ -179,8 +210,8 @@ public final class EngineRunner: EngineRunning {
         callbackQueue.async { onEvent(event) }
     }
 
-    private func finish(exitCode: Int32) {
-        guard !finished else { return }
+    private func finish(exitCode: Int32, generation: UInt64) {
+        guard !finished, self.generation == generation else { return }
         finished = true
 
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil

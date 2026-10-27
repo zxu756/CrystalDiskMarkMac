@@ -108,6 +108,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
         )
     }
 
+    public func preservingTargetPath(_ path: String) -> AppSettings {
+        var copy = self
+        copy.targetPath = path
+        return copy
+    }
+
     public var testSizeBytes: UInt64 {
         guard AppSettings.testSizeMiB.indices.contains(testSizeIndex) else { return 0 }
         return AppSettings.testSizeMiB[testSizeIndex] * 1_048_576

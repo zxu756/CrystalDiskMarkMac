@@ -6,8 +6,9 @@ public struct ResultAggregator {
     public init() {}
 
     public mutating func ingest(_ event: EngineEvent) {
-        guard case let .result(testID, operation, _, warmup, mbps, iops, latencyUs, _) = event,
-              !warmup else {
+        guard case let .result(testID, operation, _, warmup, mbps, iops, latencyUs, cancelled) = event,
+              !warmup,
+              !cancelled else {
             return
         }
 

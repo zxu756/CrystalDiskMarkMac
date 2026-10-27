@@ -67,20 +67,22 @@ public enum ResultFormatter {
         ]
 
         for test in settings.tests {
-            lines.append(line(
-                test: test,
-                result: results["\(test.id)-read"] ?? emptyResult(test, operation: .read)
-            ))
+            if let result = results["\(test.id)-read"] {
+                lines.append(line(test: test, result: result))
+            } else {
+                lines.append(missingLine(test))
+            }
         }
 
         lines.append("")
         lines.append("[Write]")
 
         for test in settings.tests {
-            lines.append(line(
-                test: test,
-                result: results["\(test.id)-write"] ?? emptyResult(test, operation: .write)
-            ))
+            if let result = results["\(test.id)-write"] {
+                lines.append(line(test: test, result: result))
+            } else {
+                lines.append(missingLine(test))
+            }
         }
 
         lines.append("")
@@ -102,20 +104,12 @@ public enum ResultFormatter {
             result.iops,
             result.latencyUs
         )
-        return "  \(test.label) (Q=\(test.queues), T=\(test.threads)): \(metrics)"
+        let stale = result.isStale ? " [STALE]" : ""
+        return "  \(test.label) (Q=\(test.queues), T=\(test.threads)): \(metrics)\(stale)"
     }
 
-    private static func emptyResult(
-        _ test: TestDefinition,
-        operation: BenchmarkOperation
-    ) -> BenchmarkResult {
-        BenchmarkResult(
-            testID: test.id,
-            operation: operation,
-            mbps: 0,
-            iops: 0,
-            latencyUs: 0
-        )
+    private static func missingLine(_ test: TestDefinition) -> String {
+        "  \(test.label) (Q=\(test.queues), T=\(test.threads)): N/A"
     }
 
     private static func modeLabel(_ mode: BenchmarkMode) -> String {

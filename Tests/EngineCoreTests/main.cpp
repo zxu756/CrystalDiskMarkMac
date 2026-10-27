@@ -346,6 +346,36 @@ void testSequentialWrite() {
     ++testCount;
 }
 
+void testZeroFillWrite() {
+    const std::string target = makeTempDirectory();
+    const auto config = configFor(target, 64ULL * 1024 * 1024, "random");
+    diskmark::TestFile file(config);
+    file.create();
+    file.fill();
+    file.fsyncForReads();
+
+    std::atomic<bool> cancel{false};
+    const auto result = diskmark::runJob(
+        file,
+        makeJob("write", "sequential", 1ULL * 1024 * 1024, 1, 1, 1),
+        cancel,
+        nullptr,
+        true
+    );
+    assert(result.bytes > 0);
+
+    char buffer[4096];
+    const ssize_t read = pread(file.fd(), buffer, sizeof(buffer), 0);
+    assert(read == static_cast<ssize_t>(sizeof(buffer)));
+    for (const char value : buffer) {
+        assert(value == 0);
+    }
+
+    file.cleanup();
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
 void testCancellation() {
     const std::string target = makeTempDirectory();
     const auto config = configFor(target, 64ULL * 1024 * 1024, "random");
@@ -455,6 +485,44 @@ void testIntervalEvents() {
     ++testCount;
 }
 
+void testFillCancellation() {
+    const std::string target = makeTempDirectory();
+    const auto config = configFor(target, 64ULL * 1024 * 1024, "random");
+    diskmark::TestFile file(config);
+    file.create();
+
+    std::atomic<bool> cancel{true};
+    expectEngineThrows("fill cancelled", [&] {
+        file.fill(&cancel);
+    });
+
+    file.cleanup();
+    std::filesystem::remove_all(target);
+}
+
+void testCancelledSessionDuringFill() {
+    const std::string target = makeTempDirectory();
+    auto config = configFor(target, 16ULL * 1024 * 1024, "random");
+    config.jobs.push_back(makeJob("read", "sequential", 1ULL * 1024 * 1024, 1, 1, 1));
+
+    std::mutex mutex;
+    std::vector<std::string> events;
+    const auto sink = [&](const std::string& line) {
+        std::lock_guard<std::mutex> lock(mutex);
+        events.push_back(line);
+    };
+
+    std::atomic<bool> cancel{true};
+    const int code = diskmark::runSession(config, sink, cancel);
+
+    assert(code == 130);
+    assert(containsEvent(events, "error"));
+    assert(findEvent(events, "error").find("\"code\":\"cancelled\"") != std::string::npos);
+    assertNoSessionDirectories(target);
+    std::filesystem::remove_all(target);
+    ++testCount;
+}
+
 void testCancelledSession() {
     const std::string target = makeTempDirectory();
     auto config = configFor(target, 16ULL * 1024 * 1024, "random");
@@ -535,9 +603,12 @@ int main() {
     testSequentialRead();
     testRandomRead();
     testSequentialWrite();
+    testZeroFillWrite();
     testCancellation();
     testRunSession();
     testIntervalEvents();
+    testFillCancellation();
+    testCancelledSessionDuringFill();
     testCancelledSession();
     testEventHelpers();
 

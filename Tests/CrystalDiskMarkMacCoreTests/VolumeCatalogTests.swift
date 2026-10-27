@@ -10,6 +10,15 @@ struct VolumeCatalogTests {
         return url
     }
 
+    @Test func bootTargetPathIncludesAppDirectory() throws {
+        let root = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let caches = root.appendingPathComponent("Caches", isDirectory: true)
+        let catalog = VolumeCatalog(cachesDirectory: caches)
+        #expect(catalog.bootTargetPath == caches.appendingPathComponent("CrystalDiskMarkMac").path)
+    }
+
     @Test func bootVolumeResolvesToInjectedCachesDirectory() throws {
         let root = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

@@ -33,12 +33,15 @@ struct AppCommands: Commands {
                 model.copyResults()
             }
             .keyboardShortcut("c", modifiers: .command)
+            .disabled(model.isRunning)
             Button("Save (Text)…") {
                 model.saveText()
             }
+            .disabled(model.isRunning)
             Button("Save (Image)…") {
                 model.saveImage()
             }
+            .disabled(model.isRunning)
             Divider()
             Button("Quit CrystalDiskMark Mac") {
                 NSApplication.shared.terminate(nil)
@@ -48,21 +51,25 @@ struct AppCommands: Commands {
 
         CommandMenu("Settings") {
             Button("Default") {
-                model.saveSettings(.defaults)
+                model.applyPreset(.defaults)
             }
+            .disabled(model.isRunning)
             Button("Flash Memory") {
-                model.saveSettings(.flashMemory)
+                model.applyPreset(.flashMemory)
             }
+            .disabled(model.isRunning)
             Divider()
             Button("Queues & Threads…") {
                 model.showSettings = true
             }
+            .disabled(model.isRunning)
         }
 
         CommandMenu("Profile") {
             Button("Default") {
                 update { $0.profile = .defaultProfile }
             }
+            .disabled(model.isRunning)
             Button("Peak Performance") {}
                 .disabled(true)
             Button("Real World Performance") {}
@@ -75,9 +82,11 @@ struct AppCommands: Commands {
             Button("Default (Random)") {
                 update { $0.dataPattern = .random }
             }
+            .disabled(model.isRunning)
             Button("All 0x00 (0 Fill)") {
                 update { $0.dataPattern = .zero }
             }
+            .disabled(model.isRunning)
         }
 
         CommandMenu("Benchmark") {
@@ -85,20 +94,25 @@ struct AppCommands: Commands {
                 model.runAll()
             }
             .keyboardShortcut("r", modifiers: .command)
+            .disabled(model.isRunning)
             Button("Stop") {
                 model.stop()
             }
             .keyboardShortcut(".", modifiers: .command)
+            .disabled(!model.isRunning)
             Divider()
             Button("Read & Write") {
                 update { $0.benchmarkMode = .readWrite }
             }
+            .disabled(model.isRunning)
             Button("Read") {
                 update { $0.benchmarkMode = .readOnly }
             }
+            .disabled(model.isRunning)
             Button("Write") {
                 update { $0.benchmarkMode = .writeOnly }
             }
+            .disabled(model.isRunning)
         }
 
         CommandMenu("Theme") {

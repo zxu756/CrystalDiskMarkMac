@@ -46,10 +46,18 @@ public struct MeterView: View {
                 Text(valueText)
                     .font(Theme.numberFont)
                     .monospacedDigit()
-                    .foregroundStyle(Theme.primaryText)
+                    .foregroundStyle(result?.isStale == true ? Theme.secondaryText : Theme.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
                     .padding(.leading, 6)
+
+                if result?.isStale == true {
+                    Text("STALE")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.orange)
+                        .padding(.trailing, 4)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             .frame(height: 30)
         }

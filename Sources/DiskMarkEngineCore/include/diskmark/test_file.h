@@ -2,6 +2,7 @@
 
 #include "diskmark/config.h"
 
+#include <atomic>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -24,8 +25,9 @@ public:
     TestFile& operator=(const TestFile&) = delete;
 
     void create();
-    void fill();
+    void fill(const std::atomic<bool>* cancel = nullptr);
     void fsyncForReads();
+    void checkFreeSpaceForRun() const;
     void cleanup();
 
     const std::string& path() const { return path_; }

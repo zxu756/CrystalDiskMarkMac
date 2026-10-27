@@ -12,13 +12,16 @@ public struct SettingsView: View {
     @ObservedObject private var draft: SettingsDraft
     public let onSave: (AppSettings) -> Void
     public let onCancel: () -> Void
+    private let availableBytes: UInt64?
 
     public init(
         settings: AppSettings,
+        availableBytes: UInt64? = nil,
         onSave: @escaping (AppSettings) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.draft = SettingsDraft(settings: settings)
+        self.availableBytes = availableBytes
         self.onSave = onSave
         self.onCancel = onCancel
     }
@@ -58,10 +61,10 @@ public struct SettingsView: View {
 
             HStack(spacing: 8) {
                 Button("Default") {
-                    draft.settings = .defaults
+                    draft.settings = AppSettings.defaults.preservingTargetPath(draft.settings.targetPath)
                 }
                 Button("Flash Memory") {
-                    draft.settings = .flashMemory
+                    draft.settings = AppSettings.flashMemory.preservingTargetPath(draft.settings.targetPath)
                 }
                 Button("NVMe SSD") {}
                     .disabled(true)
@@ -69,7 +72,7 @@ public struct SettingsView: View {
             }
             .controlSize(.small)
 
-            if let issue = draft.settings.validate().first {
+            if let issue = validationIssues.first {
                 Text(issue.message)
                     .font(Theme.bodyFont)
                     .foregroundStyle(.red)
@@ -87,7 +90,7 @@ public struct SettingsView: View {
                     onSave(draft.settings)
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(!draft.settings.validate().isEmpty)
+                .disabled(!validationIssues.isEmpty)
             }
         }
         .padding(16)
@@ -150,6 +153,23 @@ public struct SettingsView: View {
             Spacer()
         }
         .font(Theme.bodyFont)
+    }
+
+    private var validationIssues: [ValidationIssue] {
+        var issues = draft.settings.validate()
+
+        if let availableBytes {
+            let required = draft.settings.testSizeBytes
+            let margin = VolumeCatalog.freeSpaceMargin
+            if required > UInt64.max - margin || availableBytes < required + margin {
+                issues.append(ValidationIssue(
+                    field: "testSize",
+                    message: "Not enough free space for the test file and 512 MiB safety margin."
+                ))
+            }
+        }
+
+        return issues
     }
 
     private func blockSizeLabel(_ bytes: UInt64) -> String {

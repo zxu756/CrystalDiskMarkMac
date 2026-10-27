@@ -28,6 +28,10 @@ public struct VolumeCatalog {
             .first!
     }
 
+    public var bootTargetPath: String {
+        cachesDirectory.appendingPathComponent("CrystalDiskMarkMac", isDirectory: true).path
+    }
+
     public func mountedVolumes() -> [VolumeInfo] {
         let keys: Set<URLResourceKey> = [
             .volumeNameKey,

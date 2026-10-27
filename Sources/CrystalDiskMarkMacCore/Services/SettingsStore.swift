@@ -54,11 +54,23 @@ public struct SettingsStore {
                 type = tests[index].type
             }
 
-            let sizeKiB = defaults.object(forKey: "BenchSize\(index)") as? Double
-            let blockSizeBytes = sizeKiB.map { UInt64(($0 * 1_024).rounded()) } ?? tests[index].blockSizeBytes
+            var blockSizeBytes = tests[index].blockSizeBytes
+            if let sizeKiB = defaults.object(forKey: "BenchSize\(index)") as? Double,
+               sizeKiB.isFinite,
+               sizeKiB > 0,
+               sizeKiB <= Double(UInt64.max) / 1_024.0 {
+                let bytes = UInt64((sizeKiB * 1_024.0).rounded())
+                if AppSettings.blockSizeOptions.contains(bytes) {
+                    blockSizeBytes = bytes
+                }
+            }
 
-            let queues = int(forKey: "BenchQueues\(index)", fallback: tests[index].queues, range: 1...32)
-            let threads = int(forKey: "BenchThreads\(index)", fallback: tests[index].threads, range: 1...16)
+            var queues = int(forKey: "BenchQueues\(index)", fallback: tests[index].queues, range: 1...32)
+            var threads = int(forKey: "BenchThreads\(index)", fallback: tests[index].threads, range: 1...16)
+            if queues * threads > 128 {
+                queues = tests[index].queues
+                threads = tests[index].threads
+            }
 
             tests[index] = TestDefinition(
                 id: tests[index].id,

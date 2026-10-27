@@ -6,6 +6,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
+#include <cstring>
 #include <random>
 #include <thread>
 #include <unistd.h>
@@ -72,7 +73,8 @@ JobResult runJob(
     TestFile& file,
     const Job& job,
     std::atomic<bool>& cancel,
-    std::atomic<std::uint64_t>* progressBytes
+    std::atomic<std::uint64_t>* progressBytes,
+    bool zeroFill
 ) {
     if (file.fd() < 0) {
         fail("not_created", "test file is not open");
@@ -109,7 +111,18 @@ JobResult runJob(
             fail("allocation_failed", "could not allocate worker buffers");
         }
         if (job.operation == "write") {
-            arc4random_buf(buffers[static_cast<std::size_t>(i)], static_cast<std::size_t>(job.blockSizeBytes));
+            if (zeroFill) {
+                std::memset(
+                    buffers[static_cast<std::size_t>(i)],
+                    0,
+                    static_cast<std::size_t>(job.blockSizeBytes)
+                );
+            } else {
+                arc4random_buf(
+                    buffers[static_cast<std::size_t>(i)],
+                    static_cast<std::size_t>(job.blockSizeBytes)
+                );
+            }
         }
     }
 
@@ -262,6 +275,7 @@ int runSessionImpl(const Config& config, const EventSink& emit, std::atomic<bool
     gCancelFlag = &cancel;
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
+    std::signal(SIGPIPE, SIG_IGN);
 
     TestFile file(config);
     try {
@@ -271,7 +285,14 @@ int runSessionImpl(const Config& config, const EventSink& emit, std::atomic<bool
         file.create();
 
         emit(phaseEvent("fill", "Filling test file"));
-        file.fill();
+        file.fill(&cancel);
+
+        if (cancel.load(std::memory_order_relaxed)) {
+            emit(errorEvent("cancelled", "Cancelled"));
+            file.cleanup();
+            gCancelFlag = nullptr;
+            return 130;
+        }
 
         const bool hasReadJob = std::any_of(
             config.jobs.begin(),
@@ -290,6 +311,7 @@ int runSessionImpl(const Config& config, const EventSink& emit, std::atomic<bool
                 return 130;
             }
 
+            file.checkFreeSpaceForRun();
             emit(runEvent(job));
 
             std::atomic<bool> jobDone{false};
@@ -314,7 +336,7 @@ int runSessionImpl(const Config& config, const EventSink& emit, std::atomic<bool
 
             JobResult result;
             try {
-                result = runJob(file, job, cancel, &jobBytes);
+                result = runJob(file, job, cancel, &jobBytes, config.dataPattern == "zero");
             } catch (...) {
                 jobDone.store(true, std::memory_order_release);
                 reporter.join();
@@ -356,7 +378,7 @@ int runSessionImpl(const Config& config, const EventSink& emit, std::atomic<bool
         file.cleanup();
         emit(errorEvent(error.code, error.what()));
         gCancelFlag = nullptr;
-        return 3;
+        return error.code == "cancelled" ? 130 : 3;
     } catch (const std::exception& error) {
         file.cleanup();
         emit(errorEvent("engine_failure", error.what()));

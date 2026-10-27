@@ -56,6 +56,14 @@ struct BenchmarkViewModelTests {
         #expect(result.latencyUs == 30)
     }
 
+    @Test func cancelledPartialResultIsIgnored() throws {
+        let (model, _, suite, suiteName) = try makeHarness()
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        model.handle(.result(testID: "seq", operation: .read, run: 1, warmup: false, mbps: 100, iops: 10, latencyUs: 50, cancelled: true))
+        #expect(model.results.isEmpty)
+    }
+
     @Test func stateTransitionsFollowEngineEvents() throws {
         let (model, _, suite, suiteName) = try makeHarness()
         defer { suite.removePersistentDomain(forName: suiteName) }
@@ -80,6 +88,27 @@ struct BenchmarkViewModelTests {
         model.handle(.error(code: "io_failed", message: "boom"))
         #expect(model.state == .failed("boom"))
         #expect(model.errorMessage == "boom")
+    }
+
+    @Test func errorEventMarksExistingResultsStale() throws {
+        let (model, _, suite, suiteName) = try makeHarness()
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        model.handle(.result(testID: "seq", operation: .read, run: 1, warmup: false, mbps: 100, iops: 10, latencyUs: 50, cancelled: false))
+        model.handle(.error(code: "io_failed", message: "boom"))
+
+        #expect(model.results["seq-read"]?.isStale == true)
+    }
+
+    @Test func lateExitDoesNotOverwriteEngineError() throws {
+        let (model, _, suite, suiteName) = try makeHarness()
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        model.handle(.error(code: "insufficient_space", message: "not enough space"))
+        model.handleExit(code: 3, stderr: "")
+
+        #expect(model.state == .failed("not enough space"))
+        #expect(model.errorMessage == "not enough space")
     }
 
     @Test func stopCancelsAndMarksResultsStale() throws {
@@ -130,6 +159,16 @@ struct BenchmarkViewModelTests {
         #expect(model.state == .failed("Engine exited with code 1: boom"))
     }
 
+    @Test func persistSettingsWritesTopBarChanges() throws {
+        let (model, _, suite, suiteName) = try makeHarness()
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        model.settings.testCount = 7
+        model.persistSettings()
+
+        #expect(SettingsStore(defaults: suite).load().testCount == 7)
+    }
+
     @Test func saveSettingsPersists() throws {
         let (model, _, suite, suiteName) = try makeHarness()
         defer { suite.removePersistentDomain(forName: suiteName) }
@@ -144,6 +183,62 @@ struct BenchmarkViewModelTests {
 
     @Test func previewHasSampleResults() {
         #expect(!BenchmarkViewModel.preview.results.isEmpty)
+    }
+
+    @Test func displaySettingsUseRunSnapshot() throws {
+        let (model, runner, suite, suiteName) = try makeHarness()
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        model.runAll()
+        #expect(runner.configs.last?.jobs.count == 32)
+        #expect(model.displaySettings.unit == .mbps)
+
+        model.settings.unit = .iops
+        #expect(model.displaySettings.unit == .mbps)
+    }
+
+    @Test func customFolderTargetUsesFolderName() throws {
+        let target = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cdm-folder-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: target) }
+
+        let suiteName = "BenchmarkViewModelTests.\(UUID().uuidString)"
+        let suite = try #require(UserDefaults(suiteName: suiteName))
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        var settings = AppSettings.defaults
+        settings.targetPath = target.path
+        let model = BenchmarkViewModel(
+            settings: settings,
+            engineRunner: MockEngineRunner(),
+            settingsStore: SettingsStore(defaults: suite)
+        )
+
+        #expect(model.targetDisplayName == target.lastPathComponent)
+    }
+
+    @Test func applyPresetPreservesTargetPath() throws {
+        let (model, _, suite, suiteName) = try makeHarness()
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        let target = model.settings.targetPath
+        model.applyPreset(.flashMemory)
+
+        #expect(model.settings.measureTime == 1)
+        #expect(model.settings.intervalTime == 30)
+        #expect(model.settings.targetPath == target)
+    }
+
+    @Test func missingTargetFailsBeforeStarting() throws {
+        let (model, runner, suite, suiteName) = try makeHarness()
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        model.settings.targetPath = "/tmp/cdm-missing-\(UUID().uuidString)"
+        model.runAll()
+
+        #expect(!runner.started)
+        #expect(model.state == .failed("Target folder does not exist: \(model.settings.targetPath)"))
     }
 
     @Test func initRemovesOrphanedSessionsButKeepsLiveOnes() throws {

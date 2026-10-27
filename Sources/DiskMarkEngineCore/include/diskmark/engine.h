@@ -48,7 +48,8 @@ JobResult runJob(
     TestFile& file,
     const Job& job,
     std::atomic<bool>& cancel,
-    std::atomic<std::uint64_t>* progressBytes = nullptr
+    std::atomic<std::uint64_t>* progressBytes = nullptr,
+    bool zeroFill = false
 );
 
 int runSession(const Config& config, EventSink emit);

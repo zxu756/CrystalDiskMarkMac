@@ -72,6 +72,23 @@ struct AppSettingsTests {
         #expect(loaded.tests.map(\.label) == ["SEQ1M Q8T1", "SEQ1M Q1T1", "RND4K Q32T1", "RND4K Q1T1"])
     }
 
+    @Test func corruptStoredTestValuesFallBackSafely() throws {
+        let suiteName = "AppSettingsTests.\(UUID().uuidString)"
+        let suite = try #require(UserDefaults(suiteName: suiteName))
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        suite.set(-5.0, forKey: "BenchSize0")
+        suite.set(12_345.0, forKey: "BenchSize1")
+        suite.set(32, forKey: "BenchQueues2")
+        suite.set(16, forKey: "BenchThreads2")
+
+        let loaded = SettingsStore(defaults: suite).load()
+        #expect(loaded.tests[0].blockSizeBytes == AppSettings.defaultTests[0].blockSizeBytes)
+        #expect(loaded.tests[1].blockSizeBytes == AppSettings.defaultTests[1].blockSizeBytes)
+        #expect(loaded.tests[2].queues == AppSettings.defaultTests[2].queues)
+        #expect(loaded.tests[2].threads == AppSettings.defaultTests[2].threads)
+    }
+
     @Test func settingsRoundTrip() throws {
         let suiteName = "AppSettingsTests.\(UUID().uuidString)"
         let suite = try #require(UserDefaults(suiteName: suiteName))
@@ -94,6 +111,12 @@ struct AppSettingsTests {
         #expect(preset.tests.map(\.label) == AppSettings.defaults.tests.map(\.label))
         #expect(AppSettings.defaults.validate().isEmpty)
         #expect(preset.validate().isEmpty)
+    }
+
+    @Test func presetCanPreserveTargetPath() {
+        let preserved = AppSettings.defaults.preservingTargetPath("/Volumes/Test")
+        #expect(preserved.targetPath == "/Volumes/Test")
+        #expect(preserved.tests == AppSettings.defaults.tests)
     }
 
     @Test func nvmePresetIsDefinedButUnavailable() {

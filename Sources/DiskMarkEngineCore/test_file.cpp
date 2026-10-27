@@ -120,7 +120,7 @@ void TestFile::create() {
     size_ = config_.fileSizeBytes;
 }
 
-void TestFile::fill() {
+void TestFile::fill(const std::atomic<bool>* cancel) {
     if (fd_ < 0) {
         fail("not_created", "test file has not been created");
     }
@@ -128,6 +128,10 @@ void TestFile::fill() {
     std::vector<char> buffer(kFillBufferSize);
     std::uint64_t offset = 0;
     while (offset < size_) {
+        if (cancel != nullptr && cancel->load(std::memory_order_relaxed)) {
+            fail("cancelled", "Cancelled");
+        }
+
         const std::size_t chunk = static_cast<std::size_t>(
             std::min<std::uint64_t>(buffer.size(), size_ - offset)
         );
@@ -161,6 +165,20 @@ void TestFile::fill() {
 void TestFile::fsyncForReads() {
     if (fd_ >= 0 && fsync(fd_) != 0) {
         fail("fsync_failed", errnoMessage("fsync"));
+    }
+}
+
+void TestFile::checkFreeSpaceForRun() const {
+    struct statvfs filesystem {};
+    if (statvfs(config_.target.c_str(), &filesystem) != 0) {
+        fail("target_not_writable", errnoMessage("statvfs"));
+    }
+
+    const std::uint64_t available =
+        static_cast<std::uint64_t>(filesystem.f_bavail) *
+        static_cast<std::uint64_t>(filesystem.f_frsize);
+    if (available < kFreeSpaceMargin) {
+        fail("insufficient_space", "free space fell below the 512 MiB safety margin");
     }
 }
 

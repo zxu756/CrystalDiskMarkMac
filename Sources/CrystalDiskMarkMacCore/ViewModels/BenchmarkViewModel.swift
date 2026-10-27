@@ -17,6 +17,8 @@ public enum BenchmarkState: Equatable, Sendable {
 public final class BenchmarkViewModel: ObservableObject {
     @Published public var settings: AppSettings
     @Published public private(set) var results: [String: BenchmarkResult] = [:]
+    @Published public private(set) var runSettings: AppSettings?
+    @Published public private(set) var runVolumeName: String?
     @Published public private(set) var state: BenchmarkState = .idle
     @Published public private(set) var statusText = ""
     @Published public private(set) var progress: Double = 0
@@ -46,12 +48,26 @@ public final class BenchmarkViewModel: ObservableObject {
 
         let initialVolumes = volumeCatalog.mountedVolumes()
         self.volumes = initialVolumes
-        let bootVolume = initialVolumes.first(where: { $0.isBoot }) ?? initialVolumes.first
-        self.selectedVolume = bootVolume
+        let bootVolume = initialVolumes.first(where: { $0.isBoot })
 
         if self.settings.targetPath.isEmpty, let bootVolume,
            let target = try? volumeCatalog.resolveTarget(for: bootVolume) {
             self.settings.targetPath = target.path
+        } else if self.settings.targetPath == volumeCatalog.bootTargetPath {
+            try? FileManager.default.createDirectory(
+                at: URL(fileURLWithPath: self.settings.targetPath),
+                withIntermediateDirectories: true
+            )
+        }
+
+        if self.settings.targetPath == volumeCatalog.bootTargetPath {
+            self.selectedVolume = bootVolume
+        } else {
+            self.selectedVolume = initialVolumes.first {
+                !$0.isBoot &&
+                (self.settings.targetPath == $0.url.path ||
+                 self.settings.targetPath.hasPrefix($0.url.path + "/"))
+            }
         }
 
         if !self.settings.targetPath.isEmpty {
@@ -84,12 +100,25 @@ public final class BenchmarkViewModel: ObservableObject {
         }
     }
 
+    public var displaySettings: AppSettings {
+        runSettings ?? settings
+    }
+
     public var targetDisplayName: String {
         if let selectedVolume {
             return selectedVolume.name
         }
         let url = URL(fileURLWithPath: settings.targetPath)
         return url.lastPathComponent.isEmpty ? "Select Folder" : url.lastPathComponent
+    }
+
+    public var targetFreeBytes: UInt64? {
+        guard !settings.targetPath.isEmpty else { return nil }
+        return try? volumeCatalog.freeBytes(at: URL(fileURLWithPath: settings.targetPath))
+    }
+
+    public func applyPreset(_ preset: AppSettings) {
+        saveSettings(preset.preservingTargetPath(settings.targetPath))
     }
 
     public func runAll() {
@@ -103,6 +132,7 @@ public final class BenchmarkViewModel: ObservableObject {
     }
 
     public func selectVolume(_ volume: VolumeInfo) {
+        guard !isRunning else { return }
         do {
             let target = try volumeCatalog.resolveTarget(
                 for: volume,
@@ -117,6 +147,7 @@ public final class BenchmarkViewModel: ObservableObject {
     }
 
     public func selectFolder(_ url: URL) {
+        guard !isRunning else { return }
         do {
             try volumeCatalog.validateFreeSpace(at: url, requiredBytes: settings.testSizeBytes)
             settings.targetPath = url.path
@@ -142,7 +173,7 @@ public final class BenchmarkViewModel: ObservableObject {
     public func stop() {
         guard !stopped else { return }
         stopped = true
-        engineRunner.cancel()
+        engineRunner.cancelAndWait(timeout: 3)
         aggregator.markStale()
         results = aggregator.results
         state = .idle
@@ -162,8 +193,13 @@ public final class BenchmarkViewModel: ObservableObject {
     }
 
     public func saveSettings(_ newSettings: AppSettings) {
+        guard !isRunning else { return }
         settings = newSettings
         settingsStore.save(newSettings)
+    }
+
+    public func persistSettings() {
+        settingsStore.save(settings)
     }
 
     public func copyResults() {
@@ -199,11 +235,11 @@ public final class BenchmarkViewModel: ObservableObject {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         let osVersion = "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
         return ResultFormatter.textBlock(
-            settings: settings,
+            settings: runSettings ?? settings,
             results: results,
             date: Date(),
             osVersion: osVersion,
-            volumeName: targetDisplayName
+            volumeName: runVolumeName ?? targetDisplayName
         )
     }
 
@@ -239,13 +275,24 @@ public final class BenchmarkViewModel: ObservableObject {
         case .error(_, let message):
             state = .failed(message)
             errorMessage = message
-            statusText = "Failed"
+            statusText = message
             progress = 0
+            aggregator.markStale()
+            results = aggregator.results
         }
     }
 
+    public func clearError() {
+        errorMessage = nil
+    }
+
     func handleExit(code: Int32, stderr: String) {
-        guard !stopped, state != .finished else { return }
+        guard !stopped else { return }
+        if case .failed = state {
+            return
+        }
+        guard state != .finished else { return }
+
         if code == 0 {
             fail("Engine exited without completion.")
         } else if stderr.isEmpty {
@@ -268,6 +315,8 @@ public final class BenchmarkViewModel: ObservableObject {
         progress = 0
         errorMessage = nil
         stopped = false
+        runSettings = settings
+        runVolumeName = targetDisplayName
         aggregator = ResultAggregator()
         results = [:]
 
@@ -315,8 +364,9 @@ public final class BenchmarkViewModel: ObservableObject {
         }
 
         let url = URL(fileURLWithPath: settings.targetPath)
-        if !FileManager.default.fileExists(atPath: url.path) {
-            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            fail("Target folder does not exist: \(url.path)")
+            return nil
         }
         do {
             try volumeCatalog.validateFreeSpace(at: url, requiredBytes: settings.testSizeBytes)
@@ -330,8 +380,10 @@ public final class BenchmarkViewModel: ObservableObject {
     private func fail(_ message: String) {
         state = .failed(message)
         errorMessage = message
-        statusText = "Failed"
+        statusText = message
         progress = 0
+        aggregator.markStale()
+        results = aggregator.results
     }
 
     public static var preview: BenchmarkViewModel {

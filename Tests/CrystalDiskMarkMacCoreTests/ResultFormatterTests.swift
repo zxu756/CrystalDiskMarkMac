@@ -74,6 +74,22 @@ struct ResultFormatterTests {
         #expect(text.contains("CrystalDiskMark"))
     }
 
+    @Test func partialResultsUseNAAndStaleMarker() {
+        var result = BenchmarkResult(testID: "seq-1m-q8t1", operation: .read, mbps: 100, iops: 10, latencyUs: 5)
+        result.isStale = true
+
+        let text = ResultFormatter.textBlock(
+            settings: .defaults,
+            results: ["seq-1m-q8t1-read": result],
+            date: Date(timeIntervalSince1970: 0),
+            osVersion: "macOS 27.0.1",
+            volumeName: "Boot volume"
+        )
+
+        #expect(text.contains("N/A"))
+        #expect(text.contains("[STALE]"))
+    }
+
     @MainActor
     @Test func rendersImageAtTwoTimesScale() throws {
         let image = ResultImageRenderer.render(model: .preview)

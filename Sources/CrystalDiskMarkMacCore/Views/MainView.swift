@@ -11,18 +11,20 @@ public struct MainView: View {
         VStack(spacing: 4) {
             topBar
                 .frame(height: 36, alignment: .top)
+                .disabled(model.isRunning)
 
             VStack(spacing: 4) {
-                ForEach(Array(model.settings.tests.enumerated()), id: \.element.id) { index, test in
+                ForEach(Array(model.displaySettings.tests.enumerated()), id: \.element.id) { index, test in
                     ResultRowView(
                         test: test,
                         read: model.results["\(test.id)-read"],
                         write: model.results["\(test.id)-write"],
-                        unit: model.settings.unit,
+                        unit: model.displaySettings.unit,
                         action: { model.run(testIndex: index) }
                     )
                 }
             }
+            .disabled(model.isRunning)
 
             Spacer(minLength: 0)
             statusBar
@@ -33,6 +35,7 @@ public struct MainView: View {
         .sheet(isPresented: $model.showSettings) {
             SettingsView(
                 settings: model.settings,
+                availableBytes: model.targetFreeBytes,
                 onSave: { settings in
                     model.saveSettings(settings)
                     model.showSettings = false
@@ -44,6 +47,19 @@ public struct MainView: View {
         }
         .sheet(isPresented: $model.showAbout) {
             AboutView()
+        }
+        .onChange(of: model.settings) { _, _ in
+            model.persistSettings()
+        }
+        .alert("CrystalDiskMark Mac", isPresented: Binding(
+            get: { model.errorMessage != nil },
+            set: { if !$0 { model.clearError() } }
+        )) {
+            Button("OK") {
+                model.clearError()
+            }
+        } message: {
+            Text(model.errorMessage ?? "")
         }
     }
 
@@ -72,7 +88,7 @@ public struct MainView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Menu {
                     ForEach(model.volumes) { volume in
-                        Button(volume.name) {
+                        Button("\(volume.name) — \(formatBytes(volume.freeBytes)) free of \(formatBytes(volume.totalBytes))") {
                             model.selectVolume(volume)
                         }
                     }
@@ -135,6 +151,10 @@ public struct MainView: View {
                 .progressViewStyle(.linear)
                 .tint(Theme.read)
         }
+    }
+
+    private func formatBytes(_ bytes: UInt64) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
     private func menuPicker<T: Hashable>(

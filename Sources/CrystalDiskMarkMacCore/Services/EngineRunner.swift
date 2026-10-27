@@ -22,6 +22,13 @@ public protocol EngineRunning: AnyObject {
         onExit: @escaping (Int32, String) -> Void
     ) throws
     func cancel()
+    func cancelAndWait(timeout: TimeInterval)
+}
+
+public extension EngineRunning {
+    func cancelAndWait(timeout: TimeInterval) {
+        cancel()
+    }
 }
 
 public final class EngineRunner: EngineRunning {
@@ -124,6 +131,28 @@ public final class EngineRunner: EngineRunning {
                     kill(process.processIdentifier, SIGKILL)
                 }
             }
+        }
+    }
+
+    public func cancelAndWait(timeout: TimeInterval) {
+        var process: Process?
+        workQueue.sync {
+            process = self.process
+            if process?.isRunning == true {
+                process?.terminate()
+            }
+        }
+
+        guard let process, process.isRunning else { return }
+
+        let exited = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            process.waitUntilExit()
+            exited.signal()
+        }
+
+        if exited.wait(timeout: .now() + timeout) == .timedOut, process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
         }
     }
 

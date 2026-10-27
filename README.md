@@ -29,6 +29,21 @@ swift test
 Scripts/test-engine.sh
 ```
 
+Regenerate the app icon:
+
+```sh
+swift Scripts/make-icon.swift
+```
+
+## Use
+
+- Choose the test count, test size, target volume, and result unit in the top row.
+- Click **All** or press `Cmd-R` to run the four default tests.
+- Click **Stop** or press `Cmd-.` to cancel.
+- Use **File → Copy / Save (Text) / Save (Image)** for results.
+- The boot volume writes under `~/Library/Caches/CrystalDiskMarkMac`; an
+  external volume writes under `<volume>/CrystalDiskMarkMac`.
+
 ## Defaults
 
 - Test file: 1 GiB

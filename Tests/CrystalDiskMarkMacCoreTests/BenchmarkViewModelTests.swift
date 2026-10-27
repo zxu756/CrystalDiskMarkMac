@@ -1,4 +1,5 @@
 import Testing
+import Darwin
 import Foundation
 @testable import CrystalDiskMarkMacCore
 
@@ -143,5 +144,42 @@ struct BenchmarkViewModelTests {
 
     @Test func previewHasSampleResults() {
         #expect(!BenchmarkViewModel.preview.results.isEmpty)
+    }
+
+    @Test func initRemovesOrphanedSessionsButKeepsLiveOnes() throws {
+        let target = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cdm-orphan-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: target) }
+
+        let orphan = target.appendingPathComponent("CrystalDiskMarkMac-orphan", isDirectory: true)
+        let live = target.appendingPathComponent("CrystalDiskMarkMac-live", isDirectory: true)
+        try FileManager.default.createDirectory(at: orphan, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: live, withIntermediateDirectories: true)
+        try "pid=999999\n".write(
+            to: orphan.appendingPathComponent(".crystaldiskmark-mac-session"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "pid=\(getpid())\n".write(
+            to: live.appendingPathComponent(".crystaldiskmark-mac-session"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let suiteName = "BenchmarkViewModelTests.\(UUID().uuidString)"
+        let suite = try #require(UserDefaults(suiteName: suiteName))
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        var settings = AppSettings.defaults
+        settings.targetPath = target.path
+        _ = BenchmarkViewModel(
+            settings: settings,
+            engineRunner: MockEngineRunner(),
+            settingsStore: SettingsStore(defaults: suite)
+        )
+
+        #expect(!FileManager.default.fileExists(atPath: orphan.path))
+        #expect(FileManager.default.fileExists(atPath: live.path))
     }
 }

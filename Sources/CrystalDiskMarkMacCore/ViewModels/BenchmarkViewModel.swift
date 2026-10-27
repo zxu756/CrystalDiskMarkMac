@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Darwin
 import Foundation
 import UniformTypeIdentifiers
 
@@ -53,13 +54,17 @@ public final class BenchmarkViewModel: ObservableObject {
             self.settings.targetPath = target.path
         }
 
+        if !self.settings.targetPath.isEmpty {
+            cleanupOrphanedSessions(at: URL(fileURLWithPath: self.settings.targetPath))
+        }
+
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
-                self?.stop()
+            MainActor.assumeIsolated {
+                self?.stopAndWait()
             }
         }
     }
@@ -138,6 +143,17 @@ public final class BenchmarkViewModel: ObservableObject {
         guard !stopped else { return }
         stopped = true
         engineRunner.cancel()
+        aggregator.markStale()
+        results = aggregator.results
+        state = .idle
+        statusText = "Stopped"
+        progress = 0
+    }
+
+    public func stopAndWait() {
+        guard !stopped else { return }
+        stopped = true
+        engineRunner.cancelAndWait(timeout: 3)
         aggregator.markStale()
         results = aggregator.results
         state = .idle
@@ -267,6 +283,28 @@ public final class BenchmarkViewModel: ObservableObject {
             )
         } catch {
             fail(error.localizedDescription)
+        }
+    }
+
+    private func cleanupOrphanedSessions(at target: URL) {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: target,
+            includingPropertiesForKeys: nil
+        ) else {
+            return
+        }
+
+        for entry in entries where entry.lastPathComponent.hasPrefix("CrystalDiskMarkMac-") {
+            let marker = entry.appendingPathComponent(".crystaldiskmark-mac-session")
+            guard let text = try? String(contentsOf: marker, encoding: .utf8),
+                  let pidLine = text.split(separator: "\n").first(where: { $0.hasPrefix("pid=") }),
+                  let pid = pid_t(pidLine.dropFirst(4)) else {
+                continue
+            }
+
+            if kill(pid, 0) != 0 {
+                try? FileManager.default.removeItem(at: entry)
+            }
         }
     }
 

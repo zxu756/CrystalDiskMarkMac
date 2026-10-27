@@ -26,6 +26,16 @@ let package = Package(
             dependencies: ["CrystalDiskMarkMacCore"],
             path: "Sources/CrystalDiskMarkMac"
         ),
+        .target(
+            name: "DiskMarkEngineCore",
+            path: "Sources/DiskMarkEngineCore",
+            publicHeadersPath: "include"
+        ),
+        .executableTarget(
+            name: "DiskMarkEngine",
+            dependencies: ["DiskMarkEngineCore"],
+            path: "Sources/DiskMarkEngine"
+        ),
         .testTarget(
             name: "CrystalDiskMarkMacCoreTests",
             dependencies: ["CrystalDiskMarkMacCore"],

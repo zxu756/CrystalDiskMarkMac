@@ -18,6 +18,7 @@ public final class BenchmarkViewModel: ObservableObject {
     @Published public private(set) var state: BenchmarkState = .idle
     @Published public private(set) var statusText = ""
     @Published public private(set) var progress: Double = 0
+    @Published public private(set) var volumes: [VolumeInfo] = []
     @Published public var selectedVolume: VolumeInfo?
     @Published public var showSettings = false
     @Published public var showAbout = false
@@ -25,6 +26,7 @@ public final class BenchmarkViewModel: ObservableObject {
 
     private let engineRunner: EngineRunning
     private let settingsStore: SettingsStore
+    private let volumeCatalog: VolumeCatalog
     private var aggregator = ResultAggregator()
     private var stopped = false
     private var terminationObserver: NSObjectProtocol?
@@ -32,11 +34,23 @@ public final class BenchmarkViewModel: ObservableObject {
     public init(
         settings: AppSettings? = nil,
         engineRunner: EngineRunning? = nil,
-        settingsStore: SettingsStore = SettingsStore()
+        settingsStore: SettingsStore = SettingsStore(),
+        volumeCatalog: VolumeCatalog = VolumeCatalog()
     ) {
         self.settingsStore = settingsStore
         self.settings = settings ?? settingsStore.load()
         self.engineRunner = engineRunner ?? EngineRunner(engineURL: EngineRunner.defaultEngineURL())
+        self.volumeCatalog = volumeCatalog
+
+        let initialVolumes = volumeCatalog.mountedVolumes()
+        self.volumes = initialVolumes
+        let bootVolume = initialVolumes.first(where: { $0.isBoot }) ?? initialVolumes.first
+        self.selectedVolume = bootVolume
+
+        if self.settings.targetPath.isEmpty, let bootVolume,
+           let target = try? volumeCatalog.resolveTarget(for: bootVolume) {
+            self.settings.targetPath = target.path
+        }
 
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
@@ -64,20 +78,59 @@ public final class BenchmarkViewModel: ObservableObject {
         }
     }
 
-    public func runAll() {
-        guard let target = targetURL() else {
-            fail("No target folder selected.")
-            return
+    public var targetDisplayName: String {
+        if let selectedVolume {
+            return selectedVolume.name
         }
+        let url = URL(fileURLWithPath: settings.targetPath)
+        return url.lastPathComponent.isEmpty ? "Select Folder" : url.lastPathComponent
+    }
+
+    public func runAll() {
+        guard let target = validatedTarget() else { return }
         start(BenchmarkJobBuilder.allTests(settings: settings, target: target))
     }
 
     public func run(testIndex: Int) {
-        guard let target = targetURL() else {
-            fail("No target folder selected.")
-            return
-        }
+        guard let target = validatedTarget() else { return }
         start(BenchmarkJobBuilder.singleTest(settings: settings, testIndex: testIndex, target: target))
+    }
+
+    public func selectVolume(_ volume: VolumeInfo) {
+        do {
+            let target = try volumeCatalog.resolveTarget(
+                for: volume,
+                requiredBytes: settings.testSizeBytes
+            )
+            settings.targetPath = target.path
+            selectedVolume = volume
+            saveSettings(settings)
+        } catch {
+            fail(error.localizedDescription)
+        }
+    }
+
+    public func selectFolder(_ url: URL) {
+        do {
+            try volumeCatalog.validateFreeSpace(at: url, requiredBytes: settings.testSizeBytes)
+            settings.targetPath = url.path
+            selectedVolume = nil
+            saveSettings(settings)
+        } catch {
+            fail(error.localizedDescription)
+        }
+    }
+
+    public func chooseFolder() {
+        guard let url = volumeCatalog.chooseFolder() else { return }
+        selectFolder(url)
+    }
+
+    public func refreshVolumes() {
+        volumes = volumeCatalog.mountedVolumes()
+        if selectedVolume == nil {
+            selectedVolume = volumes.first(where: { $0.isBoot }) ?? volumes.first
+        }
     }
 
     public func stop() {
@@ -175,9 +228,23 @@ public final class BenchmarkViewModel: ObservableObject {
         }
     }
 
-    private func targetURL() -> URL? {
-        guard !settings.targetPath.isEmpty else { return nil }
-        return URL(fileURLWithPath: settings.targetPath)
+    private func validatedTarget() -> URL? {
+        guard !settings.targetPath.isEmpty else {
+            fail("No target folder selected.")
+            return nil
+        }
+
+        let url = URL(fileURLWithPath: settings.targetPath)
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        do {
+            try volumeCatalog.validateFreeSpace(at: url, requiredBytes: settings.testSizeBytes)
+            return url
+        } catch {
+            fail(error.localizedDescription)
+            return nil
+        }
     }
 
     private func fail(_ message: String) {

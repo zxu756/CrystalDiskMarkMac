@@ -31,7 +31,16 @@ public struct MainView: View {
         .frame(width: 480, height: 300)
         .background(Theme.window)
         .sheet(isPresented: $model.showSettings) {
-            placeholderSheet(title: "Queues & Threads", detail: "Settings UI arrives in the next task.")
+            SettingsView(
+                settings: model.settings,
+                onSave: { settings in
+                    model.saveSettings(settings)
+                    model.showSettings = false
+                },
+                onCancel: {
+                    model.showSettings = false
+                }
+            )
         }
         .sheet(isPresented: $model.showAbout) {
             placeholderSheet(
@@ -56,7 +65,7 @@ public struct MainView: View {
                 value: AppSettings.testSizeLabel(for: model.settings.testSizeIndex),
                 selection: $model.settings.testSizeIndex,
                 options: Array(0..<AppSettings.testSizeMiB.count),
-                width: 70
+                width: 76
             ) { AppSettings.testSizeLabel(for: $0) }
 
             VStack(alignment: .leading, spacing: 1) {
@@ -64,9 +73,17 @@ public struct MainView: View {
                     .font(Theme.labelFont)
                     .foregroundStyle(Theme.secondaryText)
                 Menu {
-                    Button("Select Folder…") {}
+                    ForEach(model.volumes) { volume in
+                        Button(volume.name) {
+                            model.selectVolume(volume)
+                        }
+                    }
+                    Divider()
+                    Button("Select Folder…") {
+                        model.chooseFolder()
+                    }
                 } label: {
-                    Text(model.selectedVolume?.name ?? "Boot volume")
+                    Text(model.targetDisplayName)
                         .font(Theme.bodyFont)
                         .foregroundStyle(Theme.primaryText)
                         .frame(width: 92, alignment: .leading)

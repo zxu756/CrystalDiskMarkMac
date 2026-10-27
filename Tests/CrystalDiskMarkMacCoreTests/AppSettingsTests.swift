@@ -82,6 +82,7 @@ struct AppSettingsTests {
         #expect(preset.measureTime == 1)
         #expect(preset.intervalTime == 30)
         #expect(preset.tests.map(\.label) == AppSettings.defaults.tests.map(\.label))
+        #expect(AppSettings.defaults.validate().isEmpty)
         #expect(preset.validate().isEmpty)
     }
 

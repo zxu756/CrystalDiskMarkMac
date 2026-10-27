@@ -29,10 +29,16 @@ struct AppCommands: Commands {
         }
 
         CommandGroup(after: .newItem) {
-            Button("Copy") {}
-                .keyboardShortcut("c", modifiers: .command)
-            Button("Save (Text)…") {}
-            Button("Save (Image)…") {}
+            Button("Copy") {
+                model.copyResults()
+            }
+            .keyboardShortcut("c", modifiers: .command)
+            Button("Save (Text)…") {
+                model.saveText()
+            }
+            Button("Save (Image)…") {
+                model.saveImage()
+            }
             Divider()
             Button("Quit CrystalDiskMark Mac") {
                 NSApplication.shared.terminate(nil)

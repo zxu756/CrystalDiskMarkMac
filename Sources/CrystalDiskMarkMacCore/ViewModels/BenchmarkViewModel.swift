@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import UniformTypeIdentifiers
 
 public enum BenchmarkState: Equatable, Sendable {
     case idle
@@ -147,6 +148,47 @@ public final class BenchmarkViewModel: ObservableObject {
     public func saveSettings(_ newSettings: AppSettings) {
         settings = newSettings
         settingsStore.save(newSettings)
+    }
+
+    public func copyResults() {
+        let text = resultsText()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
+    public func saveText() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "CrystalDiskMarkMac.txt"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? resultsText().write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    public func saveImage() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.nameFieldStringValue = "CrystalDiskMarkMac.png"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let image = ResultImageRenderer.render(model: self),
+              let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else {
+            return
+        }
+        try? png.write(to: url)
+    }
+
+    private func resultsText() -> String {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        let osVersion = "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+        return ResultFormatter.textBlock(
+            settings: settings,
+            results: results,
+            date: Date(),
+            osVersion: osVersion,
+            volumeName: targetDisplayName
+        )
     }
 
     func handle(_ event: EngineEvent) {

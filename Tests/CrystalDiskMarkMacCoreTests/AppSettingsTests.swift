@@ -62,6 +62,16 @@ struct AppSettingsTests {
         #expect(fields.contains("queues"))
     }
 
+    @Test func emptyStoreLoadsDefaultTestTypes() throws {
+        let suiteName = "AppSettingsTests.\(UUID().uuidString)"
+        let suite = try #require(UserDefaults(suiteName: suiteName))
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        let loaded = SettingsStore(defaults: suite).load()
+        #expect(loaded.tests.map(\.type) == [.sequential, .sequential, .random, .random])
+        #expect(loaded.tests.map(\.label) == ["SEQ1M Q8T1", "SEQ1M Q1T1", "RND4K Q32T1", "RND4K Q1T1"])
+    }
+
     @Test func settingsRoundTrip() throws {
         let suiteName = "AppSettingsTests.\(UUID().uuidString)"
         let suite = try #require(UserDefaults(suiteName: suiteName))

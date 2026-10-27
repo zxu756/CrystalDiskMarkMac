@@ -47,7 +47,12 @@ public struct SettingsStore {
         var tests = fallback.tests
         for index in tests.indices {
             let typeRaw = defaults.object(forKey: "BenchType\(index)") as? Int
-            let type: BenchmarkType = typeRaw == 1 ? .random : .sequential
+            let type: BenchmarkType
+            if let typeRaw {
+                type = typeRaw == 1 ? .random : .sequential
+            } else {
+                type = tests[index].type
+            }
 
             let sizeKiB = defaults.object(forKey: "BenchSize\(index)") as? Double
             let blockSizeBytes = sizeKiB.map { UInt64(($0 * 1_024).rounded()) } ?? tests[index].blockSizeBytes

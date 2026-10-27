@@ -43,10 +43,7 @@ public struct MainView: View {
             )
         }
         .sheet(isPresented: $model.showAbout) {
-            placeholderSheet(
-                title: "CrystalDiskMark Mac",
-                detail: "Based on CrystalDiskMark by hiyohiyo. Not affiliated with CrystalMark."
-            )
+            AboutView()
         }
     }
 
@@ -176,18 +173,4 @@ public struct MainView: View {
         }
     }
 
-    private func placeholderSheet(title: String, detail: String) -> some View {
-        VStack(spacing: 10) {
-            Text(title)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Theme.primaryText)
-            Text(detail)
-                .font(Theme.bodyFont)
-                .foregroundStyle(Theme.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-        }
-        .frame(width: 420, height: 300)
-        .background(Theme.window)
-    }
 }

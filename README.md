@@ -1,6 +1,6 @@
 # CrystalDiskMark Mac
 
-A native macOS replica of the CrystalDiskMark 9.0.3 default four-test profile.
+A native macOS replica of the CrystalDiskMark 9.0.3 default four-test profile. The base 480×300 layout is displayed at 150% (720×450) by the app shell.
 
 - `SEQ1M Q8T1`
 - `SEQ1M Q1T1`

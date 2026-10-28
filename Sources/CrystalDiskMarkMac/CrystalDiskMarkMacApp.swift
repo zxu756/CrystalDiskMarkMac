@@ -6,11 +6,23 @@ import CrystalDiskMarkMacCore
 struct CrystalDiskMarkMacApp: App {
     @StateObject private var model = BenchmarkViewModel()
 
+    private let baseWidth: CGFloat = 480
+    private let baseHeight: CGFloat = 300
+    private let zoom: CGFloat = 1.5
+
     var body: some Scene {
         WindowGroup {
             MainView(model: model)
+                .scaleEffect(zoom, anchor: .topLeading)
+                .frame(
+                    width: baseWidth * zoom,
+                    height: baseHeight * zoom,
+                    alignment: .topLeading
+                )
+                .background(Theme.window)
+                .clipped()
         }
-        .defaultSize(width: 480, height: 300)
+        .defaultSize(width: baseWidth * zoom, height: baseHeight * zoom)
         .windowResizability(.contentSize)
         .commands {
             AppCommands(model: model)

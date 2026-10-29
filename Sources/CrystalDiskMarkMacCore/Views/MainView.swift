@@ -2,18 +2,19 @@ import SwiftUI
 
 public struct MainView: View {
     @ObservedObject private var model: BenchmarkViewModel
+    @Environment(\.uiScale) private var uiScale
 
     public init(model: BenchmarkViewModel) {
         self.model = model
     }
 
     public var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: uiScale.value(4)) {
             topBar
-                .frame(height: 36, alignment: .top)
+                .frame(height: uiScale.value(36), alignment: .top)
                 .disabled(model.isRunning)
 
-            VStack(spacing: 4) {
+            VStack(spacing: uiScale.value(4)) {
                 ForEach(Array(model.displaySettings.tests.enumerated()), id: \.element.id) { index, test in
                     ResultRowView(
                         test: test,
@@ -29,8 +30,8 @@ public struct MainView: View {
             Spacer(minLength: 0)
             statusBar
         }
-        .padding(7)
-        .frame(width: 480, height: 300)
+        .padding(uiScale.value(7))
+        .frame(width: uiScale.value(480), height: uiScale.value(300))
         .background(Theme.window)
         .sheet(isPresented: $model.showSettings) {
             SettingsView(
@@ -64,13 +65,13 @@ public struct MainView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: uiScale.value(5)) {
             menuPicker(
                 "Count",
                 value: "\(model.settings.testCount)x",
                 selection: $model.settings.testCount,
                 options: Array(1...9),
-                width: 48
+                width: uiScale.value(48)
             ) { "\($0)x" }
 
             menuPicker(
@@ -78,12 +79,12 @@ public struct MainView: View {
                 value: AppSettings.testSizeLabel(for: model.settings.testSizeIndex),
                 selection: $model.settings.testSizeIndex,
                 options: Array(0..<AppSettings.testSizeMiB.count),
-                width: 76
+                width: uiScale.value(76)
             ) { AppSettings.testSizeLabel(for: $0) }
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: uiScale.value(1)) {
                 Text("Volume")
-                    .font(Theme.labelFont)
+                    .font(uiScale.font(11))
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 Menu {
@@ -98,13 +99,13 @@ public struct MainView: View {
                     }
                 } label: {
                     Text(model.targetDisplayName)
-                        .font(Theme.bodyFont)
+                        .font(uiScale.font(12))
                         .foregroundStyle(Theme.primaryText)
-                        .frame(width: 92, alignment: .leading)
+                        .frame(width: uiScale.value(92), alignment: .leading)
                         .lineLimit(1)
                 }
                 .menuStyle(.borderlessButton)
-                .frame(width: 92, alignment: .leading)
+                .frame(width: uiScale.value(92), alignment: .leading)
             }
 
             menuPicker(
@@ -112,7 +113,7 @@ public struct MainView: View {
                 value: model.settings.unit.label,
                 selection: $model.settings.unit,
                 options: BenchmarkUnit.allCases,
-                width: 64
+                width: uiScale.value(64)
             ) { $0.label }
 
             Spacer(minLength: 0)
@@ -120,30 +121,32 @@ public struct MainView: View {
             Button("All") {
                 model.runAll()
             }
+            .font(uiScale.font(12))
             .buttonStyle(.borderedProminent)
             .tint(Theme.read)
-            .controlSize(.small)
+            .controlSize(.regular)
             .disabled(model.isRunning)
         }
     }
 
     private var statusBar: some View {
-        VStack(spacing: 3) {
-            HStack(spacing: 6) {
+        VStack(spacing: uiScale.value(3)) {
+            HStack(spacing: uiScale.value(6)) {
                 Text(model.statusText.isEmpty ? "Ready" : model.statusText)
-                    .font(Theme.bodyFont)
+                    .font(uiScale.font(12))
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if model.isRunning {
                     Text("\(Int(model.progress * 100))%")
-                        .font(Theme.bodyFont)
+                        .font(uiScale.font(12))
                         .foregroundStyle(Theme.secondaryText)
                     Button("Stop") {
                         model.stop()
                     }
+                    .font(uiScale.font(12))
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .controlSize(.regular)
                 }
             }
 
@@ -165,9 +168,9 @@ public struct MainView: View {
         width: CGFloat,
         label: @escaping (T) -> String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: uiScale.value(1)) {
             Text(title)
-                .font(Theme.labelFont)
+                .font(uiScale.font(11))
                 .foregroundStyle(Theme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Menu {
@@ -177,13 +180,13 @@ public struct MainView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 2) {
+                HStack(spacing: uiScale.value(2)) {
                     Text(value)
-                        .font(Theme.bodyFont)
+                        .font(uiScale.font(12))
                         .foregroundStyle(Theme.primaryText)
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 7, weight: .bold))
+                        .font(.system(size: uiScale.value(7), weight: .bold))
                         .foregroundStyle(Theme.secondaryText)
                 }
                 .frame(width: width, alignment: .leading)
@@ -192,5 +195,4 @@ public struct MainView: View {
             .frame(width: width, alignment: .leading)
         }
     }
-
 }

@@ -7,6 +7,8 @@ public struct ResultRowView: View {
     public let unit: BenchmarkUnit
     public let action: () -> Void
 
+    @Environment(\.uiScale) private var uiScale
+
     public init(
         test: TestDefinition,
         read: BenchmarkResult?,
@@ -22,22 +24,22 @@ public struct ResultRowView: View {
     }
 
     public var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: uiScale.value(6)) {
             Button(action: action) {
                 VStack(spacing: 0) {
                     Text(labelParts.0)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(uiScale.font(11, weight: .semibold))
                     Text(labelParts.1)
-                        .font(.system(size: 10, weight: .regular))
+                        .font(uiScale.font(10))
                 }
                 .foregroundStyle(Theme.primaryText)
-                .frame(width: 82, height: 40)
+                .frame(width: uiScale.value(82), height: uiScale.value(40))
                 .background(Theme.panel)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Theme.track, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: uiScale.value(4))
+                        .stroke(Theme.track, lineWidth: max(1, uiScale.value(1)))
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .clipShape(RoundedRectangle(cornerRadius: uiScale.value(4)))
             }
             .buttonStyle(.plain)
             .help(helpText)
@@ -62,9 +64,9 @@ public struct ResultRowView: View {
             .frame(maxWidth: .infinity)
             .help(helpText)
         }
-        .padding(1)
+        .padding(uiScale.value(1))
         .background(Theme.panel.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: uiScale.value(4)))
     }
 
     private var labelParts: (String, String) {

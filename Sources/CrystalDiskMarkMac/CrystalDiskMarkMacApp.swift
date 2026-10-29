@@ -13,14 +13,7 @@ struct CrystalDiskMarkMacApp: App {
     var body: some Scene {
         WindowGroup {
             MainView(model: model)
-                .scaleEffect(zoom, anchor: .topLeading)
-                .frame(
-                    width: baseWidth * zoom,
-                    height: baseHeight * zoom,
-                    alignment: .topLeading
-                )
-                .background(Theme.window)
-                .clipped()
+                .environment(\.uiScale, UIScale(factor: zoom))
         }
         .defaultSize(width: baseWidth * zoom, height: baseHeight * zoom)
         .windowResizability(.contentSize)

@@ -7,6 +7,8 @@ public struct MeterView: View {
     public let blockSizeBytes: UInt64
     public let accent: Color
 
+    @Environment(\.uiScale) private var uiScale
+
     public init(
         title: String,
         result: BenchmarkResult?,
@@ -22,77 +24,59 @@ public struct MeterView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: uiScale.value(2)) {
+            HStack(spacing: uiScale.value(4)) {
                 Text(title)
-                    .font(Theme.labelFont)
+                    .font(uiScale.font(11))
                     .foregroundStyle(Theme.secondaryText)
                 Spacer(minLength: 0)
                 Text(unit.label)
-                    .font(Theme.labelFont)
+                    .font(uiScale.font(11))
                     .foregroundStyle(Theme.secondaryText)
             }
 
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 3)
+                RoundedRectangle(cornerRadius: uiScale.value(3))
                     .fill(Theme.track)
 
                 GeometryReader { geometry in
-                    RoundedRectangle(cornerRadius: 3)
+                    RoundedRectangle(cornerRadius: uiScale.value(3))
                         .fill(accent)
                         .frame(width: max(0, geometry.size.width * ratio))
                 }
 
                 Text(valueText)
-                    .font(Theme.numberFont)
+                    .font(uiScale.font(28, weight: .bold, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(result?.isStale == true ? Theme.secondaryText : Theme.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
-                    .padding(.leading, 6)
+                    .padding(.leading, uiScale.value(6))
 
                 if result?.isStale == true {
                     Text("STALE")
-                        .font(.system(size: 7, weight: .bold))
+                        .font(uiScale.font(7, weight: .bold))
                         .foregroundStyle(.orange)
-                        .padding(.trailing, 4)
+                        .padding(.trailing, uiScale.value(4))
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
-            .frame(height: 30)
+            .frame(height: uiScale.value(30))
         }
         .help(tooltip)
     }
 
     private var valueText: String {
         guard let result else { return "—" }
-        switch unit {
-        case .mbps:
-            return String(format: "%.2f", result.mbps)
-        case .gbps:
-            return String(format: "%.3f", result.mbps / 1_000)
-        case .iops:
-            return result.iops >= 1_000_000
-                ? String(format: "%.0f", result.iops)
-                : String(format: "%.2f", result.iops)
-        case .microseconds:
-            return String(format: "%.2f", result.latencyUs)
-        }
+        return ResultFormatter.valueString(result: result, unit: unit, blockSizeBytes: blockSizeBytes)
     }
 
     private var ratio: Double {
-        guard let result else { return 0 }
-        let value: Double
+        ResultFormatter.meterRatio(result: result ?? emptyResult, unit: unit)
+    }
 
-        if unit == .microseconds {
-            guard result.latencyUs > 0.0000000001 else { return 0 }
-            value = 1.0 - (1.0 / 6.0) * log10(result.latencyUs)
-        } else {
-            guard result.mbps > 0.1 else { return 0 }
-            value = (1.0 / 6.0) * log10(result.mbps * 10.0)
-        }
-
-        return min(max(value, 0), 1)
+    private var emptyResult: BenchmarkResult {
+        BenchmarkResult(testID: "empty", operation: .read, mbps: 0, iops: 0, latencyUs: 0)
     }
 
     private var tooltip: String {

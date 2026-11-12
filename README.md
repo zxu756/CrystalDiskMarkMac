@@ -13,7 +13,15 @@ The app uses SwiftUI for the UI and a bundled C++17 POSIX engine for
 file-based benchmarking. Targets macOS 14 (Sonoma) or later on Apple Silicon (`arm64`), ad-hoc
 signed. It is not an App Store app and does not use root or raw block devices.
 
+![CrystalDiskMark Mac Screenshot](docs/screenshot.png)
+
 ## Download or build
+
+### Homebrew Cask (Recommended)
+
+```sh
+brew install --cask zxu756/tap/crystaldiskmark-mac
+```
 
 ### Prebuilt release
 

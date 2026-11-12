@@ -1,5 +1,7 @@
 # CrystalDiskMark Mac
 
+> **Unofficial native macOS port** inspired by [CrystalDiskMark](https://crystalmark.info/) (MIT, hiyohiyo). Not affiliated with or endorsed by CrystalMark.
+
 A native macOS replica of the CrystalDiskMark 9.0.3 default four-test profile. The base 480×300 layout is displayed at 150% (720×450) by the app shell.
 
 - `SEQ1M Q8T1`
@@ -8,10 +10,20 @@ A native macOS replica of the CrystalDiskMark 9.0.3 default four-test profile. T
 - `RND4K Q1T1`
 
 The app uses SwiftUI for the UI and a bundled C++17 POSIX engine for
-file-based benchmarking. It targets this Mac only: macOS 27+, arm64, ad-hoc
+file-based benchmarking. Targets macOS 14 (Sonoma) or later on Apple Silicon (`arm64`), ad-hoc
 signed. It is not an App Store app and does not use root or raw block devices.
 
-## Build
+## Download or build
+
+### Prebuilt release
+
+Download `CrystalDiskMarkMac-v0.1.0-macos-arm64.zip` from [Releases](https://github.com/zxu756/CrystalDiskMarkMac/releases), move `CrystalDiskMarkMac.app` to `/Applications`, and clear the quarantine attribute before first launch (ad-hoc signed, not notarized):
+
+```sh
+xattr -cr /Applications/CrystalDiskMarkMac.app
+```
+
+### Build from source
 
 ```sh
 swift build
